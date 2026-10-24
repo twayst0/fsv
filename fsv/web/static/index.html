@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FSV — Security Scanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- liquid-glass ambient field -->
+<div class="field" aria-hidden="true">
+  <span class="orb o1"></span><span class="orb o2"></span><span class="orb o3"></span>
+  <div class="grain"></div>
+</div>
+
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <div class="logo"><span>FSV</span></div>
+      <div class="brand-txt">
+        <h1>FSV Scanner</h1>
+        <div class="sub">Web vulnerability assessment · authorized testing only</div>
+      </div>
+    </div>
+    <div class="hbtns">
+      <button class="icon-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme"></button>
+      <a class="icon-btn" href="https://github.com/fsvproject/fsv" target="_blank" title="GitHub" aria-label="GitHub">★</a>
+    </div>
+  </header>
+
+  <!-- SCAN PANEL -->
+  <section class="glass scan-panel">
+    <div class="scan-row">
+      <div class="input-wrap">
+        <span class="pre">https://</span>
+        <input id="target" type="text" placeholder="target.example.com" autocomplete="off" spellcheck="false">
+      </div>
+      <button class="btn primary" id="scanBtn"><span>Run Scan</span></button>
+      <button class="btn danger hidden" id="cancelBtn">Stop</button>
+    </div>
+
+    <div class="opts">
+      <div class="opt">Profile
+        <div class="sel"><select id="profile">
+          <option value="passive">Passive</option>
+          <option value="balanced" selected>Balanced</option>
+          <option value="aggressive">Aggressive</option>
+        </select></div>
+      </div>
+      <label class="chk"><input type="checkbox" id="crawl" checked><span class="box"></span>Crawl site</label>
+      <div class="opt">Max URLs
+        <div class="sel"><select id="maxUrls">
+          <option>10</option><option selected>50</option><option>100</option><option>200</option>
+        </select></div>
+      </div>
+      <div class="opt">Depth
+        <div class="sel"><select id="depth"><option>1</option><option selected>2</option><option>3</option></select></div>
+      </div>
+      <div class="opt">Concurrency
+        <div class="sel"><select id="threads"><option>5</option><option selected>10</option><option>20</option></select></div>
+      </div>
+      <div class="opt">Timeout
+        <div class="sel"><select id="timeout"><option>5</option><option selected>10</option><option>20</option></select></div>s
+      </div>
+    </div>
+
+    <label class="auth-box chk">
+      <input type="checkbox" id="authorized"><span class="box"></span>
+      <span class="auth-txt"><b>I am authorized to test this target.</b> I own this system or have explicit
+      written permission. Scanning systems without authorization is illegal.</span>
+    </label>
+  </section>
+
+  <!-- PROGRESS -->
+  <section class="glass progress-card" id="progressCard">
+    <div class="pbar-top">
+      <span class="pbar-phase" id="pPhase">initializing</span>
+      <span class="pbar-pct" id="pPct">0%</span>
+    </div>
+    <div class="pbar"><div class="pbar-fill" id="pFill"></div></div>
+    <div class="pmsg" id="pMsg">Starting…</div>
+  </section>
+
+  <!-- OVERVIEW: gauge + stats -->
+  <section class="overview" id="overview">
+    <div class="glass gauge-card">
+      <div class="gauge" id="gauge">
+        <svg viewBox="0 0 120 120">
+          <circle class="g-track" cx="60" cy="60" r="52"></circle>
+          <circle class="g-fill"  cx="60" cy="60" r="52" id="gFill"></circle>
+        </svg>
+        <div class="gauge-c">
+          <div class="grade" id="grade">—</div>
+          <div class="grade-l">risk grade</div>
+        </div>
+      </div>
+      <div class="gauge-meta">
+        <div class="score"><span id="riskScore">0</span><em>/100</em></div>
+        <div class="score-l">risk score</div>
+        <div class="gauge-target" id="ovTarget"></div>
+        <div class="gauge-tech" id="ovTech"></div>
+      </div>
+    </div>
+
+    <div class="stats">
+      <button class="glass stat crit" data-sev="critical"><div class="n" id="cCrit">0</div><div class="l">Critical</div></button>
+      <button class="glass stat high" data-sev="high"><div class="n" id="cHigh">0</div><div class="l">High</div></button>
+      <button class="glass stat med"  data-sev="medium"><div class="n" id="cMed">0</div><div class="l">Medium</div></button>
+      <button class="glass stat low"  data-sev="low"><div class="n" id="cLow">0</div><div class="l">Low</div></button>
+      <button class="glass stat info" data-sev="info"><div class="n" id="cInfo">0</div><div class="l">Info</div></button>
+    </div>
+  </section>
+
+  <!-- RESULTS -->
+  <section id="resultsSection" class="hidden">
+    <div class="sect-title">
+      <h2>Findings <span class="count-pill" id="fCount"></span></h2>
+      <div class="acts">
+        <div class="search"><input id="search" type="text" placeholder="filter findings…" spellcheck="false"></div>
+        <a class="mini-btn" id="dlMd" target="_blank">↓ Markdown</a>
+        <a class="mini-btn" id="dlJson" target="_blank">↓ JSON</a>
+      </div>
+    </div>
+    <div class="filter-row" id="filterRow"></div>
+    <div id="findings"></div>
+  </section>
+
+  <div class="empty" id="emptyState">
+    <div class="empty-mark">◇</div>
+    <div class="big">No findings yet</div>
+    <div class="small">Enter a target you own and run a scan.</div>
+  </div>
+
+  <!-- HISTORY -->
+  <section class="history">
+    <div class="sect-title"><h2>Recent Scans</h2>
+      <button class="mini-btn" id="refreshHist">↻ Refresh</button></div>
+    <div id="histList"></div>
+  </section>
+
+  <footer>
+    <b>FSV v<span id="ver">1.0</span></b> — Web Vulnerability Scanner &amp; MCP Security Toolkit<br>
+    For authorized security testing only · Non-commercial personal-use license
+  </footer>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
