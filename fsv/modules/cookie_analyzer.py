@@ -3,34 +3,31 @@
 from __future__ import annotations
 from fsv.core.scanner import BaseScanner
 from fsv.core.models import Finding, Severity
+import re
+
+# session/auth-looking cookie names ("id" alone matched far too much before)
+_SENSITIVE_NAME = re.compile(
+    r"(sess|auth|token|jwt|csrf|xsrf|remember|login|(^|[_\-.])sid($|[_\-.])|^id$)",
+    re.IGNORECASE,
+)
 
 
 class CookieScanner(BaseScanner):
     name = "cookies"
 
     async def scan(self, url: str) -> list[Finding]:
-        status, headers, _ = await self.fetch(url)
-        if status == -1:
+        resp = await self.fetch_response(url)
+        if not resp.ok:
             return []
 
         findings: list[Finding] = []
-        set_cookie_headers: list[str] = []
 
-        # aiohttp merges Set-Cookie; retrieve raw
-        for k, v in headers.items():
-            if k.lower() == "set-cookie":
-                set_cookie_headers.append(v)
-
-        # Also check cookie jar for the session
-        for cookie_str in set_cookie_headers:
+        for cookie_str in resp.set_cookies:
             parts  = [p.strip() for p in cookie_str.split(";")]
             name   = parts[0].split("=")[0].strip() if parts else "unknown"
             flags  = {p.lower().split("=")[0].strip() for p in parts[1:]}
 
-            is_secure_name = any(
-                kw in name.lower()
-                for kw in ("session", "auth", "token", "jwt", "csrf", "sid", "id")
-            )
+            is_secure_name = bool(_SENSITIVE_NAME.search(name))
 
             # Missing Secure flag
             if "secure" not in flags:

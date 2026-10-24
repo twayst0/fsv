@@ -41,7 +41,20 @@ MODULES_ENABLED = {
     "host_header_injection":True,
     "jwt_analysis":        True,
     "ssti":                True,
+    "sri":                 True,
+    "csp_analyzer":        True,
+    "form_security":       True,
 }
+
+# Disable modules without editing code: FSV_DISABLED_MODULES=subdomain,dns_security
+for _m in filter(None, (x.strip() for x in os.getenv("FSV_DISABLED_MODULES", "").split(","))):
+    MODULES_ENABLED[_m] = False
+
+# ── Web server limits ──────────────────────────────────────
+MAX_CONCURRENT_SCANS = int(os.getenv("FSV_MAX_SCANS", "3"))
+# Optional API token: when set, every /api and /ws call must send it
+# (header "X-FSV-Token" or ?token=...). Recommended if FSV_HOST is not loopback.
+API_TOKEN = os.getenv("FSV_TOKEN", "")
 
 # ── XSS payloads (detection only) ────────────────────────
 XSS_PAYLOADS = [

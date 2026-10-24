@@ -341,3 +341,127 @@ footer b{color:var(--muted)}
   .scan-panel,.overview.show,.stat,.finding,.fchip,.hist-item,.gauge-card{animation:none!important}
   *{transition:none!important}
 }
+
+/* ============================================================
+   v1.1 additions
+   ============================================================ */
+
+/* global stats pill in header */
+.overview-pill{display:flex;gap:10px;align-items:center;font-size:11px;color:var(--muted);
+  font-family:var(--mono);padding:0 12px;height:40px;border-radius:12px;border:1px solid var(--stroke-soft);
+  background:var(--glass)}
+.overview-pill span{white-space:nowrap}
+.overview-pill span + span::before{content:"·";margin-right:10px;color:var(--faint)}
+@media(max-width:620px){.overview-pill{display:none}}
+
+/* mini-btn ghost + advanced drawer */
+.mini-btn.ghost{background:transparent}
+.mini-btn.ghost.on{background:var(--glass-2);border-color:var(--stroke)}
+.adv{max-height:0;overflow:hidden;transition:max-height .4s var(--ease),opacity .3s;opacity:0;margin-top:0}
+.adv.open{max-height:900px;opacity:1;margin-top:16px}
+.adv-grid{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.adv-field{margin-bottom:14px}
+.adv-field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:550}
+.adv-field label em{color:var(--faint);font-style:normal;font-weight:400}
+.adv-field input{width:100%;height:40px;border-radius:10px;border:1px solid var(--stroke);
+  background:rgba(0,0,0,.22);color:var(--text);padding:0 13px;font-size:13px;font-family:var(--mono);outline:none}
+:root[data-theme="light"] .adv-field input{background:rgba(255,255,255,.55)}
+.adv-field input:focus{border-color:rgba(255,255,255,.3)}
+
+.mods-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.mods-acts{display:flex;gap:6px}
+.chip-btn{font-size:11px;padding:4px 10px;border-radius:7px;border:1px solid var(--stroke-soft);
+  background:var(--glass);color:var(--muted);cursor:pointer;transition:.15s;font-family:var(--mono)}
+.chip-btn:hover{background:var(--glass-2);color:var(--text)}
+.mod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:7px}
+.mod{display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:9px;cursor:pointer;
+  border:1px solid var(--stroke-soft);background:var(--glass);transition:.15s;font-size:12px;position:relative}
+.mod:hover{background:var(--glass-2)}
+.mod input{position:absolute;opacity:0;width:0}
+.mod .mod-name{flex:1;font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mod .mod-cat{font-size:9px;text-transform:uppercase;letter-spacing:.6px;padding:2px 6px;border-radius:5px;
+  background:rgba(99,168,255,.14);color:var(--low)}
+.mod.active .mod-cat{background:rgba(255,154,66,.16);color:var(--high)}
+.mod input:not(:checked) ~ *{opacity:.32}
+.mod input:checked + .mod-name::before{content:"✓ ";color:#7ee0a0}
+
+/* progress: findings-so-far */
+.pbar-right{display:flex;align-items:baseline;gap:12px}
+.pbar-found{font-size:12px;color:var(--muted);font-family:var(--mono)}
+
+/* report format select (small) */
+.sel.sm select{height:34px;font-size:12px;padding:0 24px 0 11px}
+
+/* sparkline */
+.spark{margin-top:10px;display:flex;flex-direction:column;gap:3px}
+.spark svg{width:160px;height:34px}
+.spk polyline{stroke:var(--med)}
+.spk.down polyline{stroke:#30c48d}
+.spk.up polyline{stroke:var(--crit)}
+.spk-l{font-size:10px;color:var(--faint);font-family:var(--mono)}
+
+/* OWASP breakdown */
+.owasp-card{display:none;padding:18px 22px;margin-top:16px}
+.owasp-card.show{display:block;animation:rise .5s var(--ease) both}
+.owasp-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px}
+.owasp-head h3{font-size:13px;font-weight:600}
+.owasp-head .muted{font-size:11px;color:var(--faint);font-family:var(--mono)}
+.owasp-row{display:grid;grid-template-columns:34px 1fr 120px 28px;align-items:center;gap:12px;margin:7px 0}
+.owasp-id{font-family:var(--mono);font-size:12px;color:var(--high);font-weight:600}
+.owasp-name{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.owasp-bar{height:7px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden}
+.owasp-bar span{display:block;height:100%;border-radius:99px;
+  background:linear-gradient(90deg,var(--high),var(--crit));transition:width .7s var(--ease)}
+.owasp-n{font-family:var(--mono);font-size:12px;text-align:right;color:var(--text)}
+@media(max-width:620px){.owasp-row{grid-template-columns:30px 1fr 60px 24px}}
+
+/* triage affordance + menu + status badges */
+.triage{flex-shrink:0;width:26px;height:26px;border-radius:7px;display:grid;place-items:center;
+  color:var(--faint);cursor:pointer;font-size:15px;transition:.15s;letter-spacing:1px}
+.triage:hover{background:var(--glass-2);color:var(--text)}
+.triage-menu{position:absolute;z-index:120;padding:6px;border-radius:12px;display:flex;flex-direction:column;
+  min-width:160px;box-shadow:0 14px 44px rgba(0,0,0,.45)}
+.triage-menu button{text-align:left;background:transparent;border:0;color:var(--text);font-size:12.5px;
+  padding:8px 11px;border-radius:8px;cursor:pointer;font-family:inherit}
+.triage-menu button:hover{background:var(--glass-2)}
+.st-badge{font-size:9.5px;text-transform:uppercase;letter-spacing:.5px;padding:2px 7px;border-radius:6px;
+  margin-left:9px;vertical-align:middle;border:1px solid currentColor}
+.st-badge.confirmed{color:var(--high)}
+.st-badge.false_positive{color:var(--faint)}
+.st-badge.accepted_risk{color:var(--low)}
+.st-badge.fixed{color:#30c48d}
+
+/* history: compare checkboxes + tags */
+.hist-item{position:relative}
+.hist-item.sel{border-color:var(--low)}
+.hist-pick{display:flex;align-items:center;flex-shrink:0}
+.hist-pick input{position:absolute;opacity:0;width:0}
+.hist-pick .box{width:17px;height:17px;border-radius:5px;border:1px solid var(--stroke);
+  background:rgba(0,0,0,.22);position:relative;transition:.15s}
+.hist-pick input:checked + .box{background:var(--low);border-color:var(--low)}
+.hist-pick input:checked + .box::after{content:"✓";position:absolute;inset:0;display:grid;place-items:center;
+  color:#fff;font-size:10px;font-weight:800}
+.htag{font-size:10px;font-family:var(--mono);padding:1px 7px;border-radius:5px;margin-left:7px;
+  background:var(--glass);border:1px solid var(--stroke-soft);color:var(--faint)}
+
+/* compare modal */
+.modal-back{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);
+  display:none;align-items:flex-start;justify-content:center;padding:60px 20px;overflow:auto}
+.modal-back.show{display:flex;animation:fadeIn .25s}
+.modal{max-width:760px;width:100%;padding:22px 24px}
+.modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.modal-head h3{font-size:16px;font-weight:600}
+.diff-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;
+  padding-bottom:14px;border-bottom:1px solid var(--stroke-soft);margin-bottom:14px;font-size:13px}
+.diff-score{font-family:var(--mono);font-size:13px}
+.diff-cols{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:620px){.diff-cols{grid-template-columns:1fr}}
+.diff-cols h4{font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:9px}
+.diff-f{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:12.5px;border-bottom:1px solid var(--stroke-soft)}
+.diff-f .sev{width:60px;font-size:9px;padding:3px 0}
+.muted{color:var(--faint);font-size:12px}
+
+@media (prefers-reduced-motion:reduce){
+  .owasp-card.show,.modal-back.show{animation:none!important}
+  .owasp-bar span,.adv{transition:none!important}
+}

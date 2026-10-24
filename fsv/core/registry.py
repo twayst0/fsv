@@ -12,6 +12,8 @@ Metadata per module:
 """
 
 from __future__ import annotations
+from functools import lru_cache
+
 from fsv.core.models import ScanProfile
 
 
@@ -36,6 +38,9 @@ META: dict[str, dict[str, str]] = {
     "mixed_content":        {"scope": "url",  "category": "passive"},
     "csrf":                 {"scope": "url",  "category": "passive"},
     "jwt_analysis":         {"scope": "url",  "category": "passive"},
+    "sri":                  {"scope": "url",  "category": "passive"},
+    "csp_analyzer":         {"scope": "url",  "category": "passive"},
+    "form_security":        {"scope": "url",  "category": "passive"},
     # ── per-URL active (send payloads) ──
     "xss":                  {"scope": "url",  "category": "active"},
     "sqli":                 {"scope": "url",  "category": "active"},
@@ -46,6 +51,37 @@ META: dict[str, dict[str, str]] = {
 }
 
 
+DESCRIPTIONS: dict[str, str] = {
+    "headers":              "Missing/weak HTTP security headers (HSTS, CSP, X-Frame-Options)",
+    "ssl":                  "SSL/TLS: HTTPS, cert validity/expiry, weak protocols & ciphers",
+    "xss":                  "Reflected Cross-Site Scripting in URL parameters",
+    "sqli":                 "Error-based SQL injection in URL parameters",
+    "cors":                 "CORS misconfiguration (wildcard, origin reflection, null)",
+    "cookies":              "Cookie flags (Secure, HttpOnly, SameSite)",
+    "csrf":                 "Missing CSRF protection on POST forms",
+    "open_redirect":        "Open redirect in redirect-style parameters",
+    "tech":                 "Technology fingerprint + outdated-software hints",
+    "paths":                "Exposed sensitive files (.git, .env, backups, admin) w/ calibration",
+    "info_disclosure":      "Leaked secrets, stack traces, internal IPs",
+    "clickjacking":         "Missing frame protection",
+    "http_methods":         "Dangerous HTTP methods (TRACE, PUT, DELETE, CONNECT)",
+    "dns_security":         "Email/DNS anti-spoofing records (SPF, DMARC, CAA)",
+    "dir_listing":          "Directory listing / auto-index enabled",
+    "mixed_content":        "HTTP resources on HTTPS pages",
+    "subdomain":            "Subdomain enumeration + sensitive subdomain exposure",
+    "security_txt":         "security.txt / responsible-disclosure policy (RFC 9116)",
+    "waf_detect":           "WAF/CDN fingerprinting",
+    "graphql_introspection":"GraphQL introspection exposure",
+    "host_header_injection":"Host header injection (redirect/cache poisoning)",
+    "jwt_analysis":         "JWT weaknesses (alg:none, weak HMAC, sensitive claims)",
+    "ssti":                 "Server-Side Template Injection (benign math marker)",
+    "sri":                  "External scripts/styles loaded without Subresource Integrity",
+    "csp_analyzer":         "Deep Content-Security-Policy review (directives, sources, reporting)",
+    "form_security":        "Login/password forms: HTTPS action, autocomplete, GET submission",
+}
+
+
+@lru_cache(maxsize=1)
 def load_registry() -> dict[str, type]:
     """Import and return {name: ScannerClass} for every module."""
     from fsv.modules.headers              import HeadersScanner
@@ -71,6 +107,9 @@ def load_registry() -> dict[str, type]:
     from fsv.modules.host_header          import HostHeaderScanner
     from fsv.modules.jwt_analysis         import JWTScanner
     from fsv.modules.ssti_detection       import SSTIScanner
+    from fsv.modules.sri_checker          import SRIScanner
+    from fsv.modules.csp_analyzer         import CSPAnalyzerScanner
+    from fsv.modules.form_security        import FormSecurityScanner
     classes = [
         HeadersScanner, SSLScanner, XSSScanner, SQLiScanner, CORSScanner,
         CookieScanner, CSRFScanner, OpenRedirectScanner, TechScanner,
@@ -78,6 +117,7 @@ def load_registry() -> dict[str, type]:
         HTTPMethodsScanner, DNSSecurityScanner, DirListingScanner,
         MixedContentScanner, SubdomainScanner, SecurityTxtScanner,
         WAFScanner, GraphQLScanner, HostHeaderScanner, JWTScanner, SSTIScanner,
+        SRIScanner, CSPAnalyzerScanner, FormSecurityScanner,
     ]
     return {c.name: c for c in classes}
 
@@ -100,3 +140,16 @@ def select_modules(profile: ScanProfile, available: list[str]) -> list[str]:
 
 def all_names() -> list[str]:
     return list(META.keys())
+
+
+def describe() -> list[dict[str, str]]:
+    """Every module with its metadata — used by CLI, web API and MCP."""
+    return [
+        {
+            "name":        name,
+            "scope":       meta["scope"],
+            "category":    meta["category"],
+            "description": DESCRIPTIONS.get(name, ""),
+        }
+        for name, meta in META.items()
+    ]

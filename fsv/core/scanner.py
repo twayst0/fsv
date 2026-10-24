@@ -4,7 +4,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from fsv.core.models import Finding, ScanConfig
-from fsv.core.http_client import HTTPClient
+from fsv.core.http_client import HTTPClient, Response
 
 
 class BaseScanner(ABC):
@@ -43,14 +43,25 @@ class BaseScanner(ABC):
         allow_redirects: bool = True,
     ) -> tuple[int, dict, str]:
         """Fetch a URL. Returns (status_code, headers_dict, body_text)."""
-        h = {**self.scan_config.headers}
-        if headers:
-            h.update(headers)
-        r = await self.http.request(
-            url, method=method, params=params, data=data,
-            headers=h or None, allow_redirects=allow_redirects,
-        )
+        r = await self.fetch_response(url, method, params, data, headers, allow_redirects)
         return r.status, r.headers, r.body
+
+    async def fetch_response(
+        self,
+        url: str,
+        method: str = "GET",
+        params: dict | None = None,
+        data: dict | None = None,
+        headers: dict | None = None,
+        allow_redirects: bool = True,
+    ) -> Response:
+        """Like fetch() but returns the full Response (all Set-Cookie headers, timing…)."""
+        # The session already carries scan_config.headers; only per-call
+        # overrides are passed so plain GETs stay cacheable.
+        return await self.http.request(
+            url, method=method, params=params, data=data,
+            headers=headers or None, allow_redirects=allow_redirects,
+        )
 
     async def fetch_with_redirect_chain(self, url: str) -> list[tuple[int, str]]:
         return await self.http.redirect_chain(url)

@@ -9,7 +9,7 @@ reports.
 Use ONLY against systems you own or are explicitly authorized to test.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __author__  = "Anıl Kara"
 __license__ = "FSV Personal Use License (non-commercial)"
 

@@ -1,68 +1,122 @@
 /* FSV dashboard client — liquid glass */
 const $ = (id) => document.getElementById(id);
-const api = (p, o) => fetch(p, o).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e)).catch(()=>Promise.reject({detail:r.statusText})));
+const api = (p, o) => fetch(p, o).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e)).catch(() => Promise.reject({ detail: r.statusText })));
 
 let currentScanId = null;
+let currentResult = null;
 let ws = null;
 let allFindings = [];
-let activeSev = null;        // severity filter
+let activeSev = null;
 let searchTerm = "";
+let MODULES = [];
+let compareSel = [];
 
-const SEV = ["critical","high","medium","low","info"];
-const SEV_COLOR = { critical:"var(--crit)", high:"var(--high)", medium:"var(--med)", low:"var(--low)", info:"var(--info)" };
-const GRADE_COLOR = { "A+":"var(--low)","A":"var(--low)","B":"var(--med)","C":"var(--high)","D":"var(--high)","F":"var(--crit)" };
+const SEV = ["critical", "high", "medium", "low", "info"];
+const SEV_COLOR = { critical: "var(--crit)", high: "var(--high)", medium: "var(--med)", low: "var(--low)", info: "var(--info)" };
+const GRADE_COLOR = { "A+": "var(--low)", "A": "var(--low)", "B": "var(--med)", "C": "var(--high)", "D": "var(--high)", "F": "var(--crit)" };
+const STATUS_LABELS = {
+  open: "Open", confirmed: "Confirmed", false_positive: "False positive",
+  accepted_risk: "Accepted risk", fixed: "Fixed",
+};
 
 /* ── theme ── */
-function applyTheme(t){
+function applyTheme(t) {
   document.documentElement.dataset.theme = t;
-  try{ localStorage.setItem("fsv-theme", t); }catch(e){}
+  try { localStorage.setItem("fsv-theme", t); } catch (e) {}
 }
 $("themeBtn").onclick = () => applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
-(function(){ let t="dark"; try{ t = localStorage.getItem("fsv-theme") || "dark"; }catch(e){} applyTheme(t); })();
+(function () { let t = "dark"; try { t = localStorage.getItem("fsv-theme") || "dark"; } catch (e) {} applyTheme(t); })();
 
-api("/api/info").then(d => { $("ver").textContent = d.version; }).catch(()=>{});
+function esc(s) { return (s || "").toString().replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function normTarget(raw) { raw = raw.trim(); if (!raw) return ""; if (!/^https?:\/\//i.test(raw)) raw = "https://" + raw; return raw; }
+function hostOf(u) { try { return new URL(normTarget(u)).host; } catch (e) { return u; } }
 
-function esc(s){ return (s||"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
-function normTarget(raw){ raw=raw.trim(); if(!raw) return ""; if(!/^https?:\/\//i.test(raw)) raw="https://"+raw; return raw; }
+/* ── info / modules / global stats ── */
+api("/api/info").then(d => {
+  $("ver").textContent = d.version;
+  MODULES = d.modules || [];
+  buildModuleGrid();
+  const o = d.overview || {};
+  $("globalStats").innerHTML =
+    `<span>${o.scans || 0} scans</span><span>${o.targets || 0} targets</span>` +
+    (o.triaged ? `<span>${o.triaged} triaged</span>` : "");
+}).catch(() => {});
+
+function buildModuleGrid() {
+  const grid = $("modGrid");
+  grid.innerHTML = MODULES.map(m => `
+    <label class="mod ${m.category}" title="${esc(m.description)}">
+      <input type="checkbox" data-mod="${m.name}" data-cat="${m.category}" checked>
+      <span class="mod-name">${esc(m.name)}</span>
+      <span class="mod-cat">${m.category === "active" ? "active" : "passive"}</span>
+    </label>`).join("");
+  grid.querySelectorAll("input").forEach(i => i.onchange = updateModCount);
+  updateModCount();
+}
+function selectedModules() {
+  return [...$("modGrid").querySelectorAll("input:checked")].map(i => i.dataset.mod);
+}
+function updateModCount() {
+  const n = selectedModules().length;
+  $("modCount").textContent = `(${n}/${MODULES.length} selected)`;
+}
+document.querySelectorAll(".chip-btn").forEach(b => b.onclick = () => {
+  const mode = b.dataset.mod;
+  $("modGrid").querySelectorAll("input").forEach(i => {
+    i.checked = mode === "all" ? true : mode === "none" ? false : i.dataset.cat === "passive";
+  });
+  updateModCount();
+});
+$("advToggle").onclick = () => {
+  const p = $("advPanel"); p.classList.toggle("open");
+  $("advToggle").classList.toggle("on", p.classList.contains("open"));
+};
+
+/* reflect http/https prefix as the user types a scheme */
+$("target").addEventListener("input", () => {
+  const v = $("target").value.trim();
+  $("schemePre").textContent = /^http:\/\//i.test(v) ? "http://" : "https://";
+});
 
 /* ── animation helpers ── */
-function animateCount(el, to, dur=900){
+function animateCount(el, to, dur = 900) {
   const from = parseInt(el.textContent) || 0;
-  if(from === to){ el.textContent = to; return; }
+  if (from === to) { el.textContent = to; return; }
   const t0 = performance.now();
   const ease = t => 1 - Math.pow(1 - t, 3);
-  function tick(now){
+  (function tick(now) {
     const p = Math.min(1, (now - t0) / dur);
     el.textContent = Math.round(from + (to - from) * ease(p));
-    if(p < 1) requestAnimationFrame(tick);
-    else { el.textContent = to; el.classList.add("bump"); setTimeout(()=>el.classList.remove("bump"),400); }
-  }
-  requestAnimationFrame(tick);
+    if (p < 1) requestAnimationFrame(tick);
+    else { el.textContent = to; el.classList.add("bump"); setTimeout(() => el.classList.remove("bump"), 400); }
+  })(performance.now());
 }
 
 var _toastN = 0;
-function toast(title, sub, color="var(--low)"){
+function toast(title, sub, color = "var(--low)") {
   let host = $("toasts");
-  if(!host){ host = document.createElement("div"); host.id="toasts"; document.body.appendChild(host); }
+  if (!host) { host = document.createElement("div"); host.id = "toasts"; document.body.appendChild(host); }
   const el = document.createElement("div");
   el.className = "toast";
   el.innerHTML = `<span class="tdot" style="background:${color};box-shadow:0 0 8px ${color}"></span>
-    <div><b>${esc(title)}</b>${sub?`<div class="tsub">${esc(sub)}</div>`:""}</div>`;
+    <div><b>${esc(title)}</b>${sub ? `<div class="tsub">${esc(sub)}</div>` : ""}</div>`;
   host.appendChild(el);
-  const id = ++_toastN;
-  setTimeout(()=>{ el.classList.add("out"); setTimeout(()=>el.remove(),400); }, 4200);
-  return id;
+  setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 400); }, 4200);
+  return ++_toastN;
 }
 
 /* ── run scan ── */
 $("scanBtn").onclick = startScan;
 $("cancelBtn").onclick = cancelScan;
-$("target").addEventListener("keydown", e => { if(e.key==="Enter") startScan(); });
+$("target").addEventListener("keydown", e => { if (e.key === "Enter") startScan(); });
 
-async function startScan(){
+async function startScan() {
   const target = normTarget($("target").value);
-  if(!target){ $("target").focus(); return; }
-  if(!$("authorized").checked){ flashAuth(); return; }
+  if (!target) { $("target").focus(); return; }
+  if (!$("authorized").checked) { flashAuth(); return; }
+
+  const mods = selectedModules();
+  if (mods.length === 0) { toast("No modules selected", "Pick at least one module", "var(--med)"); return; }
 
   $("scanBtn").disabled = true;
   $("scanBtn").classList.add("loading");
@@ -70,119 +124,143 @@ async function startScan(){
   $("cancelBtn").classList.remove("hidden");
   $("progressCard").classList.add("show");
   $("overview").classList.remove("show");
+  $("owaspCard").classList.remove("show");
   $("resultsSection").classList.add("hidden");
   $("emptyState").classList.remove("show");
   $("findings").innerHTML = ""; allFindings = []; activeSev = null; searchTerm = "";
-  setProgress("init", 0, "Starting scan…");
-  toast("Scan started", normTarget($("target").value).replace(/^https?:\/\//,""), "var(--low)");
+  $("search").value = "";
+  setProgress("init", 0, "Starting scan…", 0);
+  toast("Scan started", hostOf(target), "var(--low)");
+
+  const body = {
+    target, crawl: $("crawl").checked, profile: $("profile").value,
+    max_urls: parseInt($("maxUrls").value), depth: parseInt($("depth").value),
+    threads: parseInt($("threads").value), timeout: parseInt($("timeout").value),
+    rate_per_sec: parseFloat($("rate").value),
+    exclude_paths: $("exclude").value.split(",").map(s => s.trim()).filter(Boolean),
+    tags: $("tags").value.split(",").map(s => s.trim()).filter(Boolean),
+    respect_robots: $("robots").checked,
+    authorized: true,
+  };
+  // only send module list if the user narrowed it
+  if (mods.length !== MODULES.length) body.modules = mods;
 
   let res;
-  try{
-    res = await api("/api/scan", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({
-        target, crawl:$("crawl").checked, profile:$("profile").value,
-        max_urls:parseInt($("maxUrls").value), depth:parseInt($("depth").value),
-        threads:parseInt($("threads").value), timeout:parseInt($("timeout").value),
-        authorized:true,
-      })
-    });
-  }catch(err){ setProgress("error",0,err.detail||"Failed to start scan"); resetBtn(); return; }
+  try {
+    res = await api("/api/scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  } catch (err) { setProgress("error", 0, err.detail || "Failed to start scan", 0); resetBtn(); toast("Could not start", err.detail || "", "var(--crit)"); return; }
 
   currentScanId = res.scan_id;
   openWs(currentScanId);
 }
 
-async function cancelScan(){
-  if(!currentScanId) return;
+async function cancelScan() {
+  if (!currentScanId) return;
   $("cancelBtn").textContent = "Stopping…";
-  try{ await api(`/api/scan/${currentScanId}/cancel`, {method:"POST"}); }catch(e){}
+  try { await api(`/api/scan/${currentScanId}/cancel`, { method: "POST" }); } catch (e) {}
 }
 
-function openWs(scanId){
-  const proto = location.protocol==="https:"?"wss":"ws";
+function openWs(scanId) {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
   ws = new WebSocket(`${proto}://${location.host}/ws/${scanId}`);
   ws.onmessage = (ev) => {
     const d = JSON.parse(ev.data);
-    if(d.type==="progress") setProgress(d.phase, d.pct, d.message);
-    else if(d.type==="complete") finishScan(scanId);
+    if (d.type === "progress") setProgress(d.phase, d.pct, d.message, d.findings);
+    else if (d.type === "complete") finishScan(scanId);
   };
   ws.onerror = () => pollUntilDone(scanId);
+  ws.onclose = (e) => { if (e.code === 4401) { toast("Unauthorized", "API token required", "var(--crit)"); resetBtn(); } };
 }
-async function pollUntilDone(scanId){
-  for(let i=0;i<900;i++){
-    try{ const d=await api(`/api/scan/${scanId}`);
-      if(["completed","failed","cancelled"].includes(d.status)){ finishScan(scanId); return; } }catch(e){}
-    await new Promise(r=>setTimeout(r,1000));
+async function pollUntilDone(scanId) {
+  for (let i = 0; i < 1200; i++) {
+    try { const d = await api(`/api/scan/${scanId}`); if (["completed", "failed", "cancelled"].includes(d.status)) { finishScan(scanId); return; } } catch (e) {}
+    await new Promise(r => setTimeout(r, 1000));
   }
 }
 
-function setProgress(phase,pct,msg){
+function setProgress(phase, pct, msg, found) {
   $("pPhase").textContent = phase;
-  $("pPct").textContent = Math.round(pct)+"%";
-  $("pFill").style.width = pct+"%";
-  $("pMsg").textContent = msg||"";
+  $("pPct").textContent = Math.round(pct) + "%";
+  $("pFill").style.width = pct + "%";
+  $("pMsg").textContent = msg || "";
+  $("pFound").textContent = found ? `${found} finding${found > 1 ? "s" : ""}` : "";
 }
 
-async function finishScan(scanId){
-  setProgress("done",100,"Scan complete");
+async function finishScan(scanId) {
+  setProgress("done", 100, "Scan complete", undefined);
   let d;
-  try{ d = await api(`/api/scan/${scanId}`); renderResult(d); }catch(e){}
-  resetBtn(); loadHistory();
-  setTimeout(()=>$("progressCard").classList.remove("show"),1100);
-  if(ws){ ws.close(); ws=null; }
-  if(d){
-    const c=d.counts||{};
-    if(d.status==="cancelled") toast("Scan cancelled","Partial results shown","var(--med)");
-    else if(d.status==="failed") toast("Scan failed", d.error||"", "var(--crit)");
-    else if((c.critical||0)+(c.high||0)>0)
+  try { d = await api(`/api/scan/${scanId}`); currentResult = d; renderResult(d); } catch (e) {}
+  resetBtn(); loadHistory(); refreshGlobalStats();
+  setTimeout(() => $("progressCard").classList.remove("show"), 1100);
+  if (ws) { ws.close(); ws = null; }
+  if (d) {
+    const c = d.counts || {};
+    if (d.status === "cancelled") toast("Scan cancelled", "Partial results shown", "var(--med)");
+    else if (d.status === "failed") toast("Scan failed", d.error || "", "var(--crit)");
+    else if ((c.critical || 0) + (c.high || 0) > 0)
       toast(`Grade ${d.grade} · ${c.total} findings`, `${c.critical} critical, ${c.high} high`, "var(--crit)");
     else
       toast(`Grade ${d.grade} · scan complete`, `${c.total} findings`, "var(--low)");
   }
 }
-function resetBtn(){
-  $("scanBtn").disabled=false;
+function resetBtn() {
+  $("scanBtn").disabled = false;
   $("scanBtn").classList.remove("loading");
-  $("scanBtn").querySelector("span").textContent="Run Scan";
+  $("scanBtn").querySelector("span").textContent = "Run Scan";
   $("cancelBtn").classList.add("hidden");
-  $("cancelBtn").textContent="Stop";
+  $("cancelBtn").textContent = "Stop";
 }
-function flashAuth(){
-  const b=document.querySelector(".auth-box");
-  b.style.borderColor="var(--crit)";
-  b.animate([{transform:"translateX(0)"},{transform:"translateX(-6px)"},{transform:"translateX(6px)"},{transform:"translateX(0)"}],{duration:300});
-  setTimeout(()=>b.style.borderColor="",1200);
+function flashAuth() {
+  const b = document.querySelector(".auth-box");
+  b.style.borderColor = "var(--crit)";
+  b.animate([{ transform: "translateX(0)" }, { transform: "translateX(-6px)" }, { transform: "translateX(6px)" }, { transform: "translateX(0)" }], { duration: 300 });
+  setTimeout(() => b.style.borderColor = "", 1200);
+  toast("Authorization required", "Tick the box to confirm you may test this target", "var(--med)");
+}
+function refreshGlobalStats() {
+  api("/api/info").then(d => {
+    const o = d.overview || {};
+    $("globalStats").innerHTML =
+      `<span>${o.scans || 0} scans</span><span>${o.targets || 0} targets</span>` +
+      (o.triaged ? `<span>${o.triaged} triaged</span>` : "");
+  }).catch(() => {});
 }
 
-/* ── render ── */
-function renderResult(d){
-  const c = d.counts||{};
+/* ── render result ── */
+function renderResult(d) {
+  currentResult = d;
+  currentScanId = d.scan_id;
+  const c = d.counts || {};
   $("overview").classList.add("show");
-  animateCount($("cCrit"), c.critical||0); animateCount($("cHigh"), c.high||0);
-  animateCount($("cMed"), c.medium||0); animateCount($("cLow"), c.low||0); animateCount($("cInfo"), c.info||0);
+  animateCount($("cCrit"), c.critical || 0); animateCount($("cHigh"), c.high || 0);
+  animateCount($("cMed"), c.medium || 0); animateCount($("cLow"), c.low || 0); animateCount($("cInfo"), c.info || 0);
 
-  // gauge — animate ring from empty
-  const score=d.risk_score||0, grade=d.grade||"—";
-  const gc = GRADE_COLOR[grade]||"var(--info)";
-  const circ=327, off=circ-(circ*Math.min(score,100)/100);
-  $("gFill").style.strokeDashoffset=circ;
-  requestAnimationFrame(()=>requestAnimationFrame(()=>{ $("gFill").style.strokeDashoffset=off; }));
-  $("gFill").style.stroke=gc;
-  $("grade").textContent=grade; $("grade").style.color=gc;
+  const score = d.risk_score || 0, grade = d.grade || "—";
+  const gc = GRADE_COLOR[grade] || "var(--info)";
+  const circ = 327, off = circ - (circ * Math.min(score, 100) / 100);
+  $("gFill").style.strokeDashoffset = circ;
+  requestAnimationFrame(() => requestAnimationFrame(() => { $("gFill").style.strokeDashoffset = off; }));
+  $("gFill").style.stroke = gc;
+  $("grade").textContent = grade; $("grade").style.color = gc;
   animateCount($("riskScore"), score);
-  $("ovTarget").textContent=(d.target||"").replace(/^https?:\/\//,"");
-  $("ovTech").innerHTML=(d.tech_stack||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join("");
+  $("ovTarget").textContent = (d.target || "").replace(/^https?:\/\//, "");
+  $("ovTech").innerHTML = (d.tech_stack || []).map(t => `<span class="tag">${esc(t)}</span>`).join("");
 
-  $("dlMd").href=`/api/scan/${d.scan_id}/report.md`;
-  $("dlJson").href=`/api/scan/${d.scan_id}/report.json`;
+  renderOwasp(d.owasp || {}, c.total || 0);
+  loadSparkline(d.target);
 
-  allFindings = d.findings||[];
-  if(allFindings.length===0){
+  updateDownloadLink();
+  $("dlFmt").onchange = updateDownloadLink;
+
+  allFindings = (d.findings || []).filter(f => f.status === "open" || f.status === "confirmed");
+  const suppressed = (d.findings || []).filter(f => !(f.status === "open" || f.status === "confirmed"));
+  window._suppressed = suppressed;
+
+  if (allFindings.length === 0 && suppressed.length === 0) {
     $("resultsSection").classList.add("hidden");
     $("emptyState").classList.add("show");
     $("emptyState").querySelector(".big").textContent =
-      d.status==="failed" ? "Scan failed" : d.status==="cancelled" ? "Scan cancelled" : "No vulnerabilities found";
+      d.status === "failed" ? "Scan failed" : d.status === "cancelled" ? "Scan cancelled" : "No vulnerabilities found";
     $("emptyState").querySelector(".small").textContent = d.error || "The target passed all enabled checks.";
     return;
   }
@@ -192,82 +270,244 @@ function renderResult(d){
   renderFindings();
 }
 
-function renderFilterChips(){
-  const counts={}; SEV.forEach(s=>counts[s]=0);
-  allFindings.forEach(f=>counts[f.severity]++);
-  let ci=0;
-  const chips=[`<span class="fchip ${activeSev===null?'active':''}" data-sev="" style="--i:${ci++}">all · ${allFindings.length}</span>`];
-  SEV.forEach(s=>{ if(counts[s]>0) chips.push(
-    `<span class="fchip ${activeSev===s?'active':''}" data-sev="${s}" style="--i:${ci++};${activeSev===s?'':'color:'+SEV_COLOR[s]}">${s} · ${counts[s]}</span>`);});
-  $("filterRow").innerHTML=chips.join("");
-  $("filterRow").querySelectorAll(".fchip").forEach(ch=>ch.onclick=()=>{
+function updateDownloadLink() {
+  if (!currentScanId) return;
+  const fmt = $("dlFmt").value;
+  const a = $("dlBtn");
+  a.href = `/api/scan/${currentScanId}/report?format=${fmt}`;
+  a.textContent = `↓ ${fmt.toUpperCase()}`;
+  a.download = `fsv-report.${fmt}`;
+}
+
+/* ── OWASP breakdown ── */
+const OWASP_NAMES = {
+  A01: "Broken Access Control", A02: "Cryptographic Failures", A03: "Injection",
+  A04: "Insecure Design", A05: "Security Misconfiguration", A06: "Vulnerable Components",
+  A07: "Auth Failures", A08: "Integrity Failures", A09: "Logging Failures", A10: "SSRF",
+  other: "Uncategorized",
+};
+function renderOwasp(breakdown, total) {
+  const keys = Object.keys(breakdown);
+  if (!keys.length || !total) { $("owaspCard").classList.remove("show"); return; }
+  $("owaspCard").classList.add("show");
+  const max = Math.max(...Object.values(breakdown));
+  $("owaspSummary").textContent = `${keys.length} categor${keys.length > 1 ? "ies" : "y"} across ${total} findings`;
+  $("owaspBars").innerHTML = keys.sort().map(k => {
+    const n = breakdown[k], w = Math.round((n / max) * 100);
+    return `<div class="owasp-row">
+      <span class="owasp-id">${k === "other" ? "—" : k}</span>
+      <span class="owasp-name">${esc(OWASP_NAMES[k] || k)}</span>
+      <span class="owasp-bar"><span style="width:${w}%"></span></span>
+      <span class="owasp-n">${n}</span></div>`;
+  }).join("");
+}
+
+/* ── sparkline trend ── */
+async function loadSparkline(target) {
+  const el = $("spark"); el.innerHTML = "";
+  let pts;
+  try { pts = await api(`/api/trend?target=${encodeURIComponent(hostOf(target))}&limit=20`); } catch (e) { return; }
+  if (!pts || pts.length < 2) return;
+  const scores = pts.map(p => p.risk_score);
+  const w = 160, h = 34, max = Math.max(100, ...scores), n = scores.length;
+  const path = scores.map((s, i) => `${(i / (n - 1)) * w},${h - (s / max) * h}`).join(" ");
+  const last = pts[pts.length - 1], prev = pts[pts.length - 2];
+  const dir = last.risk_score < prev.risk_score ? "down" : last.risk_score > prev.risk_score ? "up" : "flat";
+  el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" class="spk ${dir}">
+    <polyline points="${path}" fill="none" stroke-width="2"></polyline></svg>
+    <span class="spk-l">${n} scans · trend ${dir === "down" ? "↓ improving" : dir === "up" ? "↑ worse" : "→ flat"}</span>`;
+}
+
+/* ── filter chips ── */
+function renderFilterChips() {
+  const counts = {}; SEV.forEach(s => counts[s] = 0);
+  allFindings.forEach(f => counts[f.severity]++);
+  let ci = 0;
+  const chips = [`<span class="fchip ${activeSev === null ? 'active' : ''}" data-sev="" style="--i:${ci++}">all · ${allFindings.length}</span>`];
+  SEV.forEach(s => { if (counts[s] > 0) chips.push(`<span class="fchip ${activeSev === s ? 'active' : ''}" data-sev="${s}" style="--i:${ci++};${activeSev === s ? '' : 'color:' + SEV_COLOR[s]}">${s} · ${counts[s]}</span>`); });
+  const sup = (window._suppressed || []).length;
+  if (sup) chips.push(`<span class="fchip ${activeSev === '_sup' ? 'active' : ''}" data-sev="_sup" style="--i:${ci++}">triaged · ${sup}</span>`);
+  $("filterRow").innerHTML = chips.join("");
+  $("filterRow").querySelectorAll(".fchip").forEach(ch => ch.onclick = () => {
     activeSev = ch.dataset.sev || null; renderFilterChips(); renderFindings();
   });
 }
 
-function renderFindings(){
-  let list = allFindings;
-  if(activeSev) list = list.filter(f=>f.severity===activeSev);
-  if(searchTerm){
-    const q=searchTerm.toLowerCase();
-    list = list.filter(f=>(f.title+f.description+f.url+(f.module||"")+(f.cwe||"")).toLowerCase().includes(q));
+function renderFindings() {
+  let list = activeSev === "_sup" ? (window._suppressed || []) : allFindings;
+  if (activeSev && activeSev !== "_sup") list = list.filter(f => f.severity === activeSev);
+  if (searchTerm) {
+    const q = searchTerm.toLowerCase();
+    list = list.filter(f => (f.title + f.description + f.url + (f.module || "") + (f.cwe || "") + (f.owasp || "")).toLowerCase().includes(q));
   }
-  $("fCount").textContent = list.length===allFindings.length ? allFindings.length : `${list.length}/${allFindings.length}`;
-  $("findings").innerHTML = list.map((f,i)=>renderFinding(f,i)).join("") ||
+  const base = activeSev === "_sup" ? (window._suppressed || []).length : allFindings.length;
+  $("fCount").textContent = list.length === base ? base : `${list.length}/${base}`;
+  $("findings").innerHTML = list.map((f, i) => renderFinding(f, i)).join("") ||
     `<div class="empty show" style="padding:40px"><div class="small">No findings match this filter.</div></div>`;
-  $("findings").querySelectorAll(".f-head").forEach(h=>h.onclick=()=>h.closest(".finding").classList.toggle("open"));
+  $("findings").querySelectorAll(".f-head").forEach(h => h.onclick = (e) => {
+    if (e.target.closest(".triage")) return;
+    h.closest(".finding").classList.toggle("open");
+  });
+  wireTriage();
 }
 
-function renderFinding(f, i=0){
-  const refs=(f.references||[]).map(r=>`<a href="${esc(r)}" target="_blank" rel="noopener">${esc(r)}</a>`).join("<br>");
-  const tags=[]; if(f.module)tags.push(f.module); if(f.cwe)tags.push(f.cwe);
-  if(f.cvss_score!=null)tags.push("CVSS "+f.cvss_score); if(f.parameter)tags.push("param: "+f.parameter);
+function renderFinding(f, i = 0) {
+  const refs = (f.references || []).map(r => `<a href="${esc(r)}" target="_blank" rel="noopener">${esc(r)}</a>`).join("<br>");
+  const tags = []; if (f.module) tags.push(f.module);
+  if (f.owasp) tags.push(f.owasp); if (f.cwe) tags.push(f.cwe);
+  if (f.cvss_score != null) tags.push("CVSS " + f.cvss_score);
+  if (f.parameter) tags.push("param: " + f.parameter);
   const conf = f.confidence ? `<span class="tag conf-${f.confidence}">${f.confidence}</span>` : "";
-  return `<div class="glass finding" style="--i:${Math.min(i,24)}">
+  const affected = (f.affected_urls && f.affected_urls.length > 1)
+    ? `<h4>Affected URLs (${f.affected_urls.length})</h4><pre>${esc(f.affected_urls.slice(0, 60).join("\n"))}${f.affected_urls.length > 60 ? "\n…" : ""}</pre>` : "";
+  const statusBadge = (f.status && f.status !== "open")
+    ? `<span class="st-badge ${f.status}">${STATUS_LABELS[f.status] || f.status}</span>` : "";
+  return `<div class="glass finding" data-fp="${esc(f.fingerprint || f.id)}" style="--i:${Math.min(i, 24)}">
     <div class="f-head">
       <span class="sev ${f.severity}">${f.severity}</span>
-      <span class="f-title">${esc(f.title)}</span>
-      <span class="f-meta">${esc((f.url||"").replace(/^https?:\/\//,""))}</span>
+      <span class="f-title">${esc(f.title)}${statusBadge}</span>
+      <span class="f-meta">${esc((f.url || "").replace(/^https?:\/\//, ""))}</span>
+      <span class="triage" data-fp="${esc(f.fingerprint || f.id)}" data-id="${esc(f.id)}" title="Triage">⋯</span>
       <span class="f-arrow">›</span>
     </div>
     <div class="f-body"><div class="f-inner">
-      <div class="tags">${conf}${tags.map(t=>`<span class="tag">${esc(t)}</span>`).join("")}</div>
+      <div class="tags">${conf}${tags.map(t => `<span class="tag">${esc(t)}</span>`).join("")}</div>
       <h4>Description</h4><p>${esc(f.description)}</p>
-      ${f.evidence?`<h4>Evidence</h4><pre>${esc(f.evidence)}</pre>`:""}
-      ${f.recommendation?`<h4>Remediation</h4><p>${esc(f.recommendation)}</p>`:""}
-      ${refs?`<h4>References</h4><p>${refs}</p>`:""}
+      ${f.evidence ? `<h4>Evidence</h4><pre>${esc(f.evidence)}</pre>` : ""}
+      ${f.recommendation ? `<h4>Remediation</h4><p>${esc(f.recommendation)}</p>` : ""}
+      ${affected}
+      ${f.triage_note ? `<h4>Triage note</h4><p>${esc(f.triage_note)}</p>` : ""}
+      ${refs ? `<h4>References</h4><p>${refs}</p>` : ""}
     </div></div></div>`;
 }
 
+/* ── triage ── */
+function wireTriage() {
+  document.querySelectorAll(".triage").forEach(t => t.onclick = (e) => {
+    e.stopPropagation();
+    openTriageMenu(t, t.dataset.id);
+  });
+}
+function openTriageMenu(anchor, findingId) {
+  document.querySelectorAll(".triage-menu").forEach(m => m.remove());
+  const menu = document.createElement("div");
+  menu.className = "triage-menu glass";
+  const opts = [["confirmed", "Confirm"], ["false_positive", "False positive"],
+                ["accepted_risk", "Accept risk"], ["fixed", "Mark fixed"], ["open", "Reset to open"]];
+  menu.innerHTML = opts.map(([v, l]) => `<button data-st="${v}">${l}</button>`).join("");
+  document.body.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  menu.style.top = (r.bottom + window.scrollY + 6) + "px";
+  menu.style.left = Math.min(r.left + window.scrollX - 120, window.innerWidth - 180) + "px";
+  menu.querySelectorAll("button").forEach(b => b.onclick = async () => {
+    const status = b.dataset.st;
+    let note = "";
+    if (status === "false_positive" || status === "accepted_risk")
+      note = prompt("Optional note / reason:", "") || "";
+    menu.remove();
+    try {
+      await api(`/api/scan/${currentScanId}/triage`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ finding: findingId, status, note }),
+      });
+      toast("Triaged", STATUS_LABELS[status] + " — applies to this host", "var(--low)");
+      const fresh = await api(`/api/scan/${currentScanId}`);
+      renderResult(fresh); refreshGlobalStats();
+    } catch (e) { toast("Triage failed", e.detail || "", "var(--crit)"); }
+  });
+  setTimeout(() => {
+    document.addEventListener("click", function h(ev) {
+      if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener("click", h); }
+    });
+  }, 0);
+}
+
 /* stat cards act as severity filters */
-document.querySelectorAll(".stat").forEach(s=>s.onclick=()=>{
-  const sev=s.dataset.sev;
-  activeSev = (activeSev===sev)?null:sev;
-  document.querySelectorAll(".stat").forEach(x=>x.classList.toggle("active", x.dataset.sev===activeSev));
-  if(allFindings.length){ renderFilterChips(); renderFindings();
-    document.querySelector(".sect-title").scrollIntoView({behavior:"smooth",block:"start"}); }
+document.querySelectorAll(".stat").forEach(s => s.onclick = () => {
+  const sev = s.dataset.sev;
+  activeSev = (activeSev === sev) ? null : sev;
+  document.querySelectorAll(".stat").forEach(x => x.classList.toggle("active", x.dataset.sev === activeSev));
+  if (allFindings.length) {
+    renderFilterChips(); renderFindings();
+    document.querySelector(".sect-title").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 });
 
 /* search */
-$("search").addEventListener("input", e=>{ searchTerm=e.target.value; renderFindings(); });
+$("search").addEventListener("input", e => { searchTerm = e.target.value; renderFindings(); });
 
-/* ── history ── */
+/* ── history + compare ── */
 $("refreshHist").onclick = loadHistory;
-async function loadHistory(){
-  let scans; try{ scans=await api("/api/scans?limit=15"); }catch(e){ return; }
-  $("histList").innerHTML = scans.map((s,i)=>{
-    const c=s.counts||{};
-    const dots=SEV.filter(k=>c[k]>0).map(k=>`<span class="dot" style="color:${SEV_COLOR[k]}">${c[k]}</span>`).join("");
-    const when=s.started_at?new Date(s.started_at).toLocaleString():"";
-    const g=s.grade||"—", gc=GRADE_COLOR[g]||"var(--info)";
-    return `<div class="glass hist-item" data-id="${s.scan_id}" style="--i:${Math.min(i,20)}">
-      <span class="hist-grade" style="color:${gc}">${g}</span>
-      <span class="ht">${esc(s.target)}</span>
-      <span class="hc">${dots||'<span class="dot" style="color:var(--low)">clean</span>'}</span>
+async function loadHistory() {
+  let scans; try { scans = await api("/api/scans?limit=20"); } catch (e) { return; }
+  $("histList").innerHTML = scans.map((s, i) => {
+    const c = s.counts || {};
+    const dots = SEV.filter(k => c[k] > 0).map(k => `<span class="dot" style="color:${SEV_COLOR[k]}">${c[k]}</span>`).join("");
+    const when = s.started_at ? new Date(s.started_at).toLocaleString() : "";
+    const g = s.grade || "—", gc = GRADE_COLOR[g] || "var(--info)";
+    const tags = (s.tags || []).map(t => `<span class="htag">${esc(t)}</span>`).join("");
+    const checked = compareSel.includes(s.scan_id) ? "checked" : "";
+    return `<div class="glass hist-item ${checked ? 'sel' : ''}" data-id="${s.scan_id}" style="--i:${Math.min(i, 20)}">
+      <label class="hist-pick" title="Select to compare"><input type="checkbox" data-id="${s.scan_id}" ${checked}><span class="box"></span></label>
+      <span class="hist-grade" style="color:${gc};border-color:${gc}">${g}</span>
+      <span class="ht">${esc(s.target)}${tags}</span>
+      <span class="hc">${dots || '<span class="dot" style="color:var(--low)">clean</span>'}</span>
       <span class="hist-time">${esc(when)}</span></div>`;
   }).join("") || `<div class="empty show" style="padding:30px"><div class="small">No scans yet.</div></div>`;
-  $("histList").querySelectorAll(".hist-item").forEach(el=>el.onclick=async()=>{
-    try{ renderResult(await api(`/api/scan/${el.dataset.id}`)); window.scrollTo({top:0,behavior:"smooth"}); }catch(e){}
+
+  $("histList").querySelectorAll(".hist-item").forEach(el => {
+    el.onclick = async (e) => {
+      if (e.target.closest(".hist-pick")) return;
+      try { renderResult(await api(`/api/scan/${el.dataset.id}`)); window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) {}
+    };
+  });
+  $("histList").querySelectorAll(".hist-pick input").forEach(cb => cb.onchange = (e) => {
+    const id = cb.dataset.id;
+    if (cb.checked) { if (!compareSel.includes(id)) compareSel.push(id); }
+    else compareSel = compareSel.filter(x => x !== id);
+    if (compareSel.length > 2) { const drop = compareSel.shift(); }
+    cb.closest(".hist-item").classList.toggle("sel", cb.checked);
+    $("compareBtn").classList.toggle("hidden", compareSel.length !== 2);
+    $("histHint").textContent = compareSel.length === 2 ? "ready — click Compare" :
+      compareSel.length === 1 ? "select one more" : "select two to compare";
+    loadHistory();
   });
 }
+$("compareBtn").onclick = async () => {
+  if (compareSel.length !== 2) return;
+  const [a, b] = compareSel;
+  let d; try { d = await api(`/api/diff?baseline=${a}&current=${b}`); } catch (e) { toast("Compare failed", e.detail || "", "var(--crit)"); return; }
+  showDiff(d);
+};
+function showDiff(d) {
+  const vc = { improved: "var(--low)", regressed: "var(--crit)", unchanged: "var(--med)" }[d.verdict];
+  const row = (f) => `<div class="diff-f"><span class="sev ${f.severity}">${f.severity}</span><span>${esc(f.title)}</span></div>`;
+  $("diffTitle").innerHTML = `Comparison — <span style="color:${vc}">${d.verdict}</span>`;
+  $("diffBody").innerHTML = `
+    <div class="diff-head">
+      <div><b>${esc(hostOf(d.baseline.target))}</b> · ${d.baseline.started_at.slice(0,10)} → ${d.current.started_at.slice(0,10)}</div>
+      <div class="diff-score">risk ${d.baseline.risk_score} → ${d.current.risk_score}
+        <span style="color:${vc}">(${d.risk_delta >= 0 ? "+" : ""}${d.risk_delta})</span></div>
+    </div>
+    <div class="diff-cols">
+      <div><h4 style="color:var(--low)">Resolved (${d.counts.resolved})</h4>${d.resolved.map(row).join("") || '<p class="muted">none</p>'}</div>
+      <div><h4 style="color:var(--crit)">New (${d.counts.new})</h4>${d.new.map(row).join("") || '<p class="muted">none</p>'}</div>
+    </div>
+    <p class="muted">${d.counts.persisted} finding(s) persisted across both scans.</p>`;
+  $("diffModal").classList.add("show");
+}
+$("diffClose").onclick = () => $("diffModal").classList.remove("show");
+$("diffModal").onclick = (e) => { if (e.target === $("diffModal")) $("diffModal").classList.remove("show"); };
+
+/* keyboard shortcuts */
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") {
+    if (e.key === "Escape") e.target.blur();
+    return;
+  }
+  if (e.key === "/") { e.preventDefault(); $("search").focus(); }
+  else if (e.key.toLowerCase() === "t") applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+  else if (e.key === "Escape") $("diffModal").classList.remove("show");
+});
+
 loadHistory();
