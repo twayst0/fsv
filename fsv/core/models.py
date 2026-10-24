@@ -56,16 +56,23 @@ class FindingStatus(str, Enum):
       false_positive — not a real issue; excluded from risk score
       accepted_risk  — real, but the owner accepts it; excluded from risk score
       fixed          — remediated; excluded from risk score
+      superseded     — set automatically on an attack-path finding when one of its
+                       links was triaged away (not user-settable)
     """
     OPEN           = "open"
     CONFIRMED      = "confirmed"
     FALSE_POSITIVE = "false_positive"
     ACCEPTED_RISK  = "accepted_risk"
     FIXED          = "fixed"
+    SUPERSEDED     = "superseded"
 
     @property
     def counts_toward_risk(self) -> bool:
         return self in (FindingStatus.OPEN, FindingStatus.CONFIRMED)
+
+    @classmethod
+    def user_settable(cls) -> list["FindingStatus"]:
+        return [m for m in cls if m is not cls.SUPERSEDED]
 
 
 class ScanProfile(str, Enum):
@@ -153,6 +160,8 @@ class ScanConfig(BaseModel):
     rotate_ua:    bool       = False
     respect_robots: bool     = False
     max_duration: int        = 0                         # seconds; 0 = no limit
+    use_ct_logs:  bool       = False                     # query crt.sh for subdomains (sends the domain to a 3rd party)
+    allow_external: bool     = True                      # allow modules that contact hosts other than the target
     exclude_paths: list[str] = Field(default_factory=list)   # glob patterns, e.g. "/admin/*"
     seed_urls:    list[str]  = Field(default_factory=list)   # extra same-origin entry points
     tags:         list[str]  = Field(default_factory=list)   # free-form labels for history
@@ -252,6 +261,7 @@ class ScanResult(BaseModel):
     profile:      str           = "balanced"
     modules_run:  list[str]     = []
     module_errors: dict[str, int] = {}
+    module_error_samples: dict[str, str] = {}      # first error message per module (why it failed)
     tags:         list[str]     = []
 
     # ── counting (only findings that still count toward risk) ──────────
@@ -352,6 +362,7 @@ class ScanResult(BaseModel):
             "stats":        self.stats,
             "modules_run":  self.modules_run,
             "module_errors":self.module_errors,
+            "module_error_samples": self.module_error_samples,
             "tags":         self.tags,
             "error":        self.error,
             "counts":       self.counts(),

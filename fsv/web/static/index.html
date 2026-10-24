@@ -84,6 +84,8 @@
           </select></div>
         </div>
         <label class="chk"><input type="checkbox" id="robots"><span class="box"></span>Respect robots.txt</label>
+        <label class="chk" title="Sends the scanned domain name to crt.sh (a third party)"><input type="checkbox" id="ctlogs"><span class="box"></span>Certificate-Transparency subdomains</label>
+        <label class="chk" title="Modules marked ↗ send requests to hosts other than the target (DNS-named subdomains, cloud buckets)"><input type="checkbox" id="external" checked><span class="box"></span>Allow external checks ↗</label>
       </div>
       <div class="adv-2col">
         <div class="adv-field">
@@ -165,6 +167,16 @@
     </div>
   </section>
 
+  <!-- coverage warnings (module errors, unreachable target) -->
+  <div class="warnbar" id="warnBar"></div>
+
+  <!-- ATTACK PATHS -->
+  <section class="glass paths-card" id="pathsCard">
+    <div class="owasp-head"><h3>⛓ Attack paths</h3>
+      <span class="muted" id="pathsSummary"></span></div>
+    <div id="pathsList"></div>
+  </section>
+
   <!-- OWASP breakdown -->
   <section class="glass owasp-card" id="owaspCard">
     <div class="owasp-head"><h3>OWASP Top 10 (2021)</h3><span class="muted" id="owaspSummary"></span></div>
@@ -178,8 +190,15 @@
       <div class="acts">
         <div class="search"><input id="search" type="text" placeholder="filter findings… (/)" spellcheck="false"></div>
         <div class="sel sm"><select id="dlFmt" title="Report format">
-          <option value="html">HTML</option><option value="md">Markdown</option>
-          <option value="json">JSON</option><option value="sarif">SARIF</option><option value="csv">CSV</option>
+          <optgroup label="Report">
+            <option value="html">HTML</option><option value="md">Markdown</option>
+            <option value="json">JSON</option><option value="sarif">SARIF</option><option value="csv">CSV</option>
+          </optgroup>
+          <optgroup label="Fix pack (paste-ready)">
+            <option value="fix-nginx">Fix · nginx</option><option value="fix-apache">Fix · Apache</option>
+            <option value="fix-caddy">Fix · Caddy</option><option value="fix-express">Fix · Express</option>
+            <option value="fix-dns">Fix · DNS records</option>
+          </optgroup>
         </select></div>
         <a class="mini-btn" id="dlBtn" target="_blank">↓ Download</a>
       </div>

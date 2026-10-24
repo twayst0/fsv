@@ -12,17 +12,22 @@ class BaseScanner(ABC):
     """
     Abstract base for all FSV scan modules.
 
-    Subclasses set these class attributes:
-        name     — unique module id (str)
-        category — "passive" (no payloads) or "active" (sends test payloads)
-        scope    — "site" (run once on base target) or "url" (run per crawled URL)
+    Subclasses set these class attributes — they are the single source of truth
+    (the registry derives its catalogue from them):
+        name        — unique module id (str)
+        category    — "passive" (no payloads) or "active" (sends test payloads)
+        scope       — "site" (run once on base target) or "url" (run per crawled URL)
+        description — one-line summary of what the module checks
+        external    — True if it sends requests to hosts other than the target
 
     and implement async scan(url) -> list[Finding].
     """
 
-    name:     str = "base"
-    category: str = "passive"
-    scope:    str = "url"
+    name:        str  = "base"
+    category:    str  = "passive"   # "passive" (no crafted payloads) | "active"
+    scope:       str  = "url"       # "site" (once per scan) | "url" (per crawled URL)
+    description: str  = ""          # one line, shown in CLI / dashboard / MCP
+    external:    bool = False       # contacts hosts other than the target (e.g. cloud storage)
 
     def __init__(self, http: HTTPClient, scan_config: ScanConfig) -> None:
         self.http = http

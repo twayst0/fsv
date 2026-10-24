@@ -27,7 +27,9 @@ SEVERITY_EMOJI = {
     Severity.INFO:     "⚪",
 }
 
-FORMATS = ("md", "json", "html", "sarif", "csv")
+from fsv.core import fixes as _fixes   # noqa: E402
+
+FORMATS = ("md", "json", "html", "sarif", "csv") + tuple(f"fix-{x}" for x in _fixes.SERVERS)
 
 
 def render(result: ScanResult, fmt: str) -> tuple[str, str]:
@@ -43,6 +45,11 @@ def render(result: ScanResult, fmt: str) -> tuple[str, str]:
         return generate_sarif(result), "application/sarif+json"
     if fmt == "csv":
         return generate_csv(result), "text/csv; charset=utf-8"
+    if fmt.startswith("fix-"):
+        try:
+            return _fixes.generate(result, fmt[4:]), "text/markdown; charset=utf-8"
+        except ValueError:
+            pass
     raise ValueError(f"unknown report format '{fmt}' (choose: {', '.join(FORMATS)})")
 
 

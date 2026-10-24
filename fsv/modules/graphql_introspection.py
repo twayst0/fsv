@@ -18,6 +18,7 @@ class GraphQLScanner(BaseScanner):
     name     = "graphql_introspection"
     category = "passive"
     scope    = "site"
+    description = "GraphQL introspection exposure"
 
     async def scan(self, url: str) -> list[Finding]:
         parsed = urlparse(url)

@@ -42,7 +42,8 @@ async def test_loopback_host_allowed(app):
     async with _client(app) as c:
         r = await c.get("/api/info")
     assert r.status_code == 200
-    assert len(r.json()["modules"]) == 26
+    from fsv.core import registry
+    assert len(r.json()["modules"]) == len(registry.load_registry()) >= 30
 
 
 async def test_cross_origin_post_blocked(app):
@@ -117,6 +118,10 @@ async def test_scan_lifecycle_delta_and_active(app, unused_tcp_port_factory=None
             d = (await c.get(f"/api/scan/{ids[1]}/delta")).json()
             assert d["previous"] == ids[0]
             assert d["verdict"] in ("improved", "regressed", "unchanged")
+            for _ in range(100):               # the pending entry is dropped just after the scan is persisted
+                if (await c.get("/api/active")).json() == []:
+                    break
+                await asyncio.sleep(0.05)
             assert (await c.get("/api/active")).json() == []
             rep = await c.get(f"/api/scan/{ids[1]}/report?format=html")
             assert rep.status_code == 200 and "attachment" not in rep.headers["content-disposition"]
@@ -142,3 +147,60 @@ async def test_cancel_while_queued(app, monkeypatch):
         assert (await c.get("/api/active")).json() == []
         assert webapp.hub.latest(sid)["type"] == "complete"
         assert webapp.hub.latest(sid)["status"] == "cancelled"
+
+
+async def test_verify_endpoints_issue_challenge_and_record_proof(app, no_http_proof):
+    from fsv.core import dnsutil, ownership
+    from helpers import FakeDNS
+    async with _client(app) as c:
+        r = await c.post("/api/verify", json={"host": "https://Shop.Example.com/path"})
+        assert r.status_code == 200
+        info = r.json()
+        assert info["domain"] == "example.com" and info["dns"]["name"] == "_fsv-challenge.example.com"
+        assert (await c.post("/api/verify", json={"host": "  "})).status_code == 400
+
+        FakeDNS({}).install()                                        # no proof published yet
+        try:
+            none = await c.post("/api/verify/check", json={"host": "shop.example.com"})
+            assert none.json() == {"verified": False, "method": None}
+            FakeDNS({"_fsv-challenge.example.com": {"TXT": [info["dns"]["value"]]}}).install()
+            ok = await c.post("/api/verify/check", json={"host": "shop.example.com"})
+            assert ok.json() == {"verified": True, "method": "dns"}
+        finally:
+            dnsutil.set_backend(None)
+        listed = (await c.get("/api/verified")).json()
+        assert [(v["domain"], v["method"], v["expired"]) for v in listed] == [("example.com", "dns", False)]
+        assert (await c.get("/api/info")).json()["verification_required"] is False
+
+
+async def test_healthz_needs_no_token_but_everything_else_does(app, monkeypatch):
+    import fsv.web.app as webapp
+    monkeypatch.setattr(webapp, "API_TOKEN", "s3cret")
+    async with _client(app) as c:
+        h = await c.get("/healthz")
+        assert h.status_code == 200 and h.json() == {"ok": True}
+        assert (await c.get("/api/info")).status_code == 401              # counts of scans/targets are not public
+        assert (await c.get("/api/info", headers={"X-FSV-Token": "s3cret"})).status_code == 200
+        assert (await c.get("/api/scans")).status_code == 401
+    async with _client(app, host="evil.test") as c:                         # the Host guard still applies to /healthz
+        assert (await c.get("/healthz")).status_code == 403
+
+
+async def test_every_api_route_requires_the_token(app, monkeypatch):
+    """Walk the real route table so a route added tomorrow can't ship unprotected."""
+    import fsv.web.app as webapp
+    from fastapi.routing import APIRoute
+    monkeypatch.setattr(webapp, "API_TOKEN", "s3cret")
+    checked = []
+    async with _client(app) as c:
+        for route in app.routes:
+            if not isinstance(route, APIRoute) or not route.path.startswith("/api/"):
+                continue
+            path = route.path.replace("{scan_id}", "x")
+            for method in route.methods - {"HEAD", "OPTIONS"}:
+                r = await c.request(method, path, json={} if method in ("POST", "PUT", "PATCH") else None)
+                assert r.status_code == 401, f"{method} {route.path} answered {r.status_code} without a token"
+                checked.append((method, route.path))
+    assert len(checked) >= 15 and ("GET", "/api/info") in checked and ("POST", "/api/scan") in checked
+    async with _client(app) as c:                                             # and the public ones stay public
+        assert (await c.get("/")).status_code == 200 and (await c.get("/healthz")).status_code == 200

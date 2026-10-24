@@ -116,3 +116,39 @@ async def test_concurrent_init_db_is_safe():
     db._initialized.clear()
     await asyncio.gather(*(db.init_db() for _ in range(8)))
     assert await db.list_scans() == []
+
+
+async def test_module_failures_are_recorded_with_a_reason(monkeypatch, caplog):
+    """A crashing module must not vanish silently: count it, keep the reason, log it."""
+    import logging
+    from fsv.core import registry
+    from fsv.core.scanner import BaseScanner
+
+    class Boom(BaseScanner):
+        name = "boom_plugin"; scope = "site"; description = "always fails"
+        async def scan(self, url):
+            raise RuntimeError("kaboom detail")
+    registry.load_registry()
+    registry._register(Boom, "test")
+    try:
+        async def h(r):
+            return web.Response(text="<html></html>", content_type="text/html")
+        app = web.Application(); app.router.add_route("*", "/{t:.*}", h)
+        rn = web.AppRunner(app); await rn.setup()
+        s = web.TCPSite(rn, "127.0.0.1", 0); await s.start()
+        port = list(rn.addresses)[0][1]
+        try:
+            with caplog.at_level(logging.WARNING, logger="fsv.engine"):
+                r = await engine.run_scan(ScanConfig(target=f"http://127.0.0.1:{port}", crawl=False,
+                                                     max_urls=1, modules=["boom_plugin", "headers"]))
+        finally:
+            await rn.cleanup()
+    finally:
+        registry.load_registry(reload=True)
+    assert r.status.value == "completed"                       # one broken module doesn't fail the scan
+    assert r.module_errors == {"boom_plugin": 1}
+    assert "RuntimeError: kaboom detail" in r.module_error_samples["boom_plugin"]
+    assert any("boom_plugin" in rec.message for rec in caplog.records)
+    reloaded = await db.get_scan(r.scan_id)                    # survives persistence
+    assert "kaboom" in reloaded.module_error_samples["boom_plugin"]
+    assert "module_error_samples" not in reloaded.stats

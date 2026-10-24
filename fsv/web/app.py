@@ -25,17 +25,17 @@ from collections import OrderedDict
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Query
+from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Query
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from fsv import __version__
 from fsv.config import (
-    WEB_HOST, WEB_PORT, MAX_CONCURRENT_SCANS, API_TOKEN, ALLOWED_HOSTS,
+    WEB_HOST, WEB_PORT, MAX_CONCURRENT_SCANS, API_TOKEN, ALLOWED_HOSTS, REQUIRE_VERIFICATION,
 )
 from fsv.core.models import ScanConfig, ScanProfile, FindingStatus, normalize_target
-from fsv.core import engine, database as db, registry
+from fsv.core import engine, database as db, registry, ownership
 from fsv.core import report as report_mod
 from fsv.core.diff import compare
 from fsv.web.security import RequestGuard, allowed_hosts
@@ -55,7 +55,19 @@ async def _lifespan(_app: FastAPI):
         t.cancel()
 
 
-app = FastAPI(title="FSV", version=__version__, lifespan=_lifespan)
+async def _auth_for_api(request: Request) -> None:
+    """
+    App-wide: EVERY /api/* route requires the token when one is configured. Doing this in a
+    dependency (instead of a call at the top of each handler) means a route added later cannot
+    forget it — /api/info did exactly that. It also runs before request-body validation, so
+    an unauthenticated caller learns nothing from 422 messages.
+    """
+    if request.url.path.startswith("/api/"):
+        _check_token(request)
+
+
+app = FastAPI(title="FSV", version=__version__, lifespan=_lifespan,
+              dependencies=[Depends(_auth_for_api)])
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 app.add_middleware(RequestGuard, hosts=_HOSTS)
 
@@ -86,9 +98,15 @@ class ScanRequest(BaseModel):
     tags:     list[str] = []
     respect_robots: bool = False
     max_duration: int   = 0       # seconds, 0 = unlimited
+    use_ct_logs: bool   = False   # ask crt.sh for subdomains (sends the domain to a third party)
+    allow_external: bool = True   # allow modules that contact hosts other than the target
     headers:  dict[str, str] = {} # e.g. Authorization for authenticated scans
     cookies:  dict[str, str] = {}
     authorized: bool    = False   # user must confirm authorization
+
+
+class VerifyRequest(BaseModel):
+    host: str
 
 
 class TriageRequest(BaseModel):
@@ -144,8 +162,15 @@ async def index() -> str:
     return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
 
+@app.get("/healthz")
+async def healthz() -> dict:
+    """Liveness probe for containers / load balancers. No token, and nothing in it worth protecting."""
+    return {"ok": True}
+
+
 @app.get("/api/info")
-async def api_info() -> dict:
+async def api_info(request: Request) -> dict:
+    _check_token(request)          # includes scan/target counts — not for the public
     return {
         "name": "FSV",
         "version": __version__,
@@ -153,6 +178,7 @@ async def api_info() -> dict:
         "profiles": ["passive", "balanced", "aggressive"],
         "report_formats": list(report_mod.FORMATS),
         "auth_required": bool(API_TOKEN),
+        "verification_required": REQUIRE_VERIFICATION,
         "max_concurrent_scans": MAX_CONCURRENT_SCANS,
         "overview": await db.overview(),
     }
@@ -183,6 +209,7 @@ async def api_scan(req: ScanRequest, request: Request) -> JSONResponse:
             rate_per_sec=req.rate_per_sec, profile=prof, exclude_paths=req.exclude_paths,
             tags=req.tags, respect_robots=req.respect_robots,
             max_duration=req.max_duration, headers=req.headers, cookies=req.cookies,
+            use_ct_logs=req.use_ct_logs, allow_external=req.allow_external,
         )
     except Exception as exc:
         raise HTTPException(400, f"Invalid scan configuration: {exc}")
@@ -292,7 +319,8 @@ async def api_report(scan_id: str, request: Request,
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     host = re.sub(r"[^A-Za-z0-9._-]", "_", db.host_of(result.target) or "scan")
-    fname = f"fsv-{host}-{result.scan_id[:8]}.{format}"
+    ext = "md" if format.startswith("fix-") else format
+    fname = f"fsv-{host}-{result.scan_id[:8]}{'-' + format if ext == 'md' and format != 'md' else ''}.{ext}"
     return Response(content, media_type=media,
                     headers={"Content-Disposition": f'inline; filename="{fname}"'})
 
@@ -316,6 +344,42 @@ async def api_report_json(scan_id: str, request: Request) -> PlainTextResponse:
     return PlainTextResponse(report_mod.generate_json(result), media_type="application/json")
 
 
+# ── ownership verification ───────────────────────────────────────────────────
+
+def _clean_host(raw: str) -> str:
+    h = (raw or "").strip().lower()
+    h = h.split("://", 1)[-1].split("/", 1)[0]
+    if not h or any(c.isspace() for c in h):
+        raise HTTPException(400, "Provide a host name, e.g. example.com")
+    return h
+
+
+@app.post("/api/verify")
+async def api_verify_start(body: VerifyRequest, request: Request) -> JSONResponse:
+    """Issue the challenge a site owner publishes to prove control (see core/ownership.py)."""
+    _check_token(request)
+    host = _clean_host(body.host)
+    return JSONResponse(ownership.instructions(host, await db.get_install_secret()))
+
+
+@app.post("/api/verify/check")
+async def api_verify_check(body: VerifyRequest, request: Request) -> JSONResponse:
+    _check_token(request)
+    host = _clean_host(body.host)
+    method = await ownership.check_proof(host.split(":")[0], await db.get_install_secret(),
+                                         netloc=host)
+    if method:
+        await db.add_verified(ownership.verification_domain(host.split(":")[0]) if method == "dns"
+                              else host.split(":")[0], method)
+    return JSONResponse({"verified": bool(method), "method": method})
+
+
+@app.get("/api/verified")
+async def api_verified(request: Request) -> JSONResponse:
+    _check_token(request)
+    return JSONResponse(await db.list_verified())
+
+
 # ── triage / diff / trend ───────────────────────────────────────────────────
 
 @app.post("/api/scan/{scan_id}/triage")
@@ -329,8 +393,11 @@ async def api_triage(scan_id: str, body: TriageRequest, request: Request) -> JSO
         raise HTTPException(404, f"No finding '{body.finding}' in this scan")
     try:
         st = FindingStatus(body.status)
+        if st not in FindingStatus.user_settable():
+            raise ValueError
     except ValueError:
-        raise HTTPException(400, f"Invalid status '{body.status}'")
+        raise HTTPException(400, f"Invalid status '{body.status}' "
+                                 f"(use: {', '.join(s.value for s in FindingStatus.user_settable())})")
     f = match[0]
     await db.set_triage(db.host_of(result.target), f.fingerprint, st, body.note)
     return JSONResponse({"ok": True, "fingerprint": f.fingerprint, "status": st.value})

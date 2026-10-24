@@ -13,6 +13,7 @@ class SRIScanner(BaseScanner):
     name     = "sri"
     category = "passive"
     scope    = "url"
+    description = "External scripts/styles loaded without Subresource Integrity"
 
     async def scan(self, url: str) -> list[Finding]:
         status, headers, body = await self.fetch(url)

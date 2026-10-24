@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 import aiohttp
 from urllib.parse import urljoin
 
+from fsv.core.netsafety import BlockedTarget
+
 
 # ── rate limiter ───────────────────────────────────────────────────────────────
 
@@ -61,6 +63,7 @@ class HTTPStats:
     coalesced:  int = 0
     retries:    int = 0
     errors:     int = 0
+    blocked:    int = 0      # refused by the outbound-address policy
     bytes_in:   int = 0
     status_codes: dict[int, int] = field(default_factory=dict)
     total_time: float = 0.0
@@ -74,6 +77,7 @@ class HTTPStats:
             "coalesced":    self.coalesced,
             "retries":      self.retries,
             "errors":       self.errors,
+            "blocked":      self.blocked,
             "bytes_in":     self.bytes_in,
             "avg_latency_ms": round(avg * 1000, 1),
             "status_codes": {str(k): v for k, v in sorted(self.status_codes.items())},
@@ -235,8 +239,15 @@ class HTTPClient:
                         set_cookies=resp.headers.getall("Set-Cookie", []),
                         truncated=truncated,
                     )
+            except BlockedTarget as exc:
+                last_exc = exc
+                self.stats.blocked += 1
+                break                      # policy decision — never retry
             except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                 last_exc = exc
+                if isinstance(getattr(exc, "os_error", None), BlockedTarget):
+                    self.stats.blocked += 1
+                    break
                 attempt += 1
                 if attempt <= self.max_retries:
                     self.stats.retries += 1

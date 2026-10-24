@@ -1,0 +1,23 @@
+# Shared FSV instance. Put it behind a TLS reverse proxy; do not publish 7474 to the Internet.
+services:
+  fsv:
+    build: .
+    image: fsv:latest
+    restart: unless-stopped
+    environment:
+      FSV_TOKEN: ${FSV_TOKEN:?set FSV_TOKEN to a long random string}   # required: every API/WebSocket call needs it
+      FSV_ALLOWED_HOSTS: ${FSV_ALLOWED_HOSTS:-localhost}               # the Host name(s) users reach it by
+      FSV_MAX_SCANS: "3"
+      # FSV_BLOCK_PRIVATE=1 and FSV_REQUIRE_VERIFICATION=1 are the image defaults:
+      #   - never scan loopback/RFC1918 ranges (SSRF protection)
+      #   - payload-sending scans only against hosts whose owner proved control (see `fsv verify`)
+    ports:
+      - "127.0.0.1:7474:7474"
+    volumes:
+      - fsv-data:/data
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+volumes:
+  fsv-data:

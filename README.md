@@ -2,270 +2,195 @@
 
 # FSV
 
-### Web Vulnerability Scanner & MCP Security Toolkit
+### Web security scanner that finds what checklists miss — and tells you how to fix it
 
-A defensive web security scanner in the spirit of **OWASP ZAP**, **Nikto**, and **Skipfish** — rebuilt as a clean, modern engine with a glassmorphism dashboard and a first-class **MCP server** so AI agents can run authorized assessments and produce remediation reports.
+Dangling DNS & subdomain takeover · orphaned cloud buckets · SPF includes that expired · source maps & secrets in your JavaScript ·
+end-of-life software · and the **attack paths** that combine small findings into a real compromise.
+Runs as a **CLI**, a **dashboard**, an **MCP server** for AI agents, and a **CI step**.
 
-**26 modules** · `headers` · `ssl/tls` · `xss` · `sqli` · `ssti` · `cors` · `cookies` · `csrf` · `open-redirect` · `host-header` · `sensitive-files` · `info-disclosure` · `clickjacking` · `tech-fingerprint` · `http-methods` · `dns-security` · `dir-listing` · `mixed-content` · `subdomain-enum` · `waf-detect` · `security.txt` · `graphql-introspection` · `jwt-analysis` · `csp-analyzer` · `sri` · `form-security`
+**30 modules** · defensive, detection-only · local-first · `pip install` and go
 
 </div>
 
 ---
 
 > ### ⚠ Authorized use only
-> FSV is a security **assessment** tool. Use it **only** against systems you own or are **explicitly authorized in writing** to test. Scanning systems without permission is illegal in most jurisdictions. Every entry point (web, CLI, MCP) requires you to confirm authorization before a scan runs. You are responsible for how you use it.
+> FSV is a security **assessment** tool. Use it **only** against systems you own or are **explicitly authorized in writing** to test. Scanning systems without permission is illegal in most jurisdictions. Every entry point (web, CLI, MCP, CI) requires you to confirm authorization, and a shared deployment can additionally require **proof of control** of the target before any payload is sent ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
 
 ---
 
+## Why FSV
+
+Plenty of tools tell you a header is missing. The incidents that actually hurt organisations — including very well-run ones — are quieter, and they
+tend to be in places nobody is looking:
+
+| | What it is | Module |
+|---|---|---|
+| 🪝 | A **DNS record outlived its project** (`blog.example.com → old-app.github.io`): anyone can claim the name and serve content from your domain | `takeover` |
+| 🪣 | A page still loads a script from a **storage bucket that no longer exists** — whoever creates it controls your page | `cloud_storage` |
+| ✉️ | An **SPF `include:` of an expired domain**, an SPF record over the **10-lookup limit**, a **512-bit DKIM key** — "email auth is set up" but doesn't hold | `dns_security` |
+| 🗺️ | **Source maps** and **hard-coded credentials** shipped to every visitor | `js_analysis` |
+| 🧱 | **jQuery 3.3.1 / AngularJS 1.x / Vue 2** and **PHP 8.1** past end of support | `js_libs`, `tech` |
+| ⛓️ | **XSS + a session cookie without HttpOnly** = account takeover. Two "medium" findings, one critical story | `correlation` |
+
+Details, and how FSV avoids false alarms, in **[docs/DETECTIONS.md](docs/DETECTIONS.md)**.
+
 ## Features
 
-- **26 scan modules** covering the most common classes of web vulnerabilities, each finding mapped to a **CWE**, an **OWASP Top 10 (2021)** category, a severity, a **confidence** level (certain/firm/tentative), a CVSS estimate, evidence, and concrete **remediation** steps.
-- **Scan profiles** — `passive` (no payloads sent), `balanced` (safe active checks, default), `aggressive` (higher rate & concurrency).
-- **Shared HTTP engine** — a single request pipeline with **response caching**, **request coalescing** (concurrent identical GETs share one in-flight fetch), **token-bucket rate limiting**, **automatic retries with backoff**, a response-body size cap, and rich per-scan **statistics** (requests, cache hits, coalesced, retries, errors, status-code breakdown, average latency).
-- **Risk score & letter grade** — a weighted 0–100 risk score (confidence-adjusted, with diminishing returns per severity) and an A+→F grade for an at-a-glance verdict.
-- **Finding aggregation** — the same issue on 40 pages collapses into one finding carrying every affected URL, instead of 40 duplicate rows.
-- **Triage that sticks** — mark a finding *false positive*, *accepted risk*, *fixed* or *confirmed*; the decision is stored per host by a stable fingerprint and re-applied to every future scan, and triaged-away findings drop out of the risk score.
-- **Scan diffing** — compare any two scans (before/after a fix) for resolved / new / persisted findings, a risk delta, and an improved/regressed verdict; per-host **risk trend** over time.
-- **Five report formats** — Markdown (OWASP-grouped, with an executive summary), JSON, a self-contained **HTML** report, **SARIF 2.1** for GitHub code scanning / CI, and **CSV** for spreadsheets/ticket import.
-- **Plugin registry** — modules self-describe their scope (site/url) and category (passive/active); adding a module is one file + one registry line.
-- **Smart crawler** — strict same-origin (netloc) BFS that fetches a wave of pages at a time, skips assets and logout/destructive links, honours exclude-path globs, and has an optional `robots.txt` mode.
-- **Async engine** — concurrent crawling and scanning on `asyncio` + `aiohttp`, bounded-concurrency semaphore, and live **cancellation**.
-- **Liquid-glass dashboard** — a refined glassmorphism UI with an animated risk gauge, count-up stats, an **OWASP Top 10 breakdown**, a per-host **risk-trend sparkline**, inline **triage** controls, a **module picker** + advanced options drawer, **scan comparison**, live progress over WebSocket (lost-event-safe), severity filters, full-text search, keyboard shortcuts, and one-click export in any of the five formats.
-- **MCP server** — plug FSV into Claude, Cursor, or any MCP-capable agent. Ask your AI to install FSV and scan a site you own; it gets back structured findings and a report.
-- **CLI** — scriptable scans with rich terminal output.
-- **Local-first** — results stored in a local SQLite DB (`~/.fsv/scans.db`). Nothing phones home.
+- **Attack-path correlation** — reads its own findings and, where a chain is really present, adds one that names the links, tells the story step by step, and states **the cheapest single fix that breaks it**. A chain disappears when one of its links is triaged away.
+- **Fix packs** — turn findings into paste-ready **nginx / Apache / Caddy / Express / DNS** configuration (`fsv fixes <scan> nginx`). Only what was actually found; CSP is emitted report-only.
+- **CI-ready** — `fsv.toml` project config, **baselines** (gate only on *new* findings), `--fail-on`, SARIF for GitHub code scanning, and a ready-made **GitHub Action**.
+- **Triage that sticks** — false positive / accepted risk / fixed / confirmed, stored per host by stable fingerprint, re-applied to every later scan, excluded from the score. Diff any two scans; per-host risk trend.
+- **Evidence over guesses** — exposure checks validate *content* (a `.git/HEAD` must look like one; a SPA that answers 200 to everything produces nothing); every finding has a **confidence** (certain / firm / tentative), a CWE, an OWASP Top 10 (2021) category, impact and remediation.
+- **Honest failure** — a crashing module is counted, explained and logged; a target that never answered is flagged, not graded "clean"; a broken resolver doesn't turn into a page of "missing SPF".
+- **Safe by construction** — secrets are *masked at the source* and never validated; outbound policy blocks cloud-metadata/link-local always (loopback/RFC 1918 optionally) on every lookup and redirect hop; dashboard has CSRF / DNS-rebinding protection and token auth.
+- **Extensible** — a module is one class; drop a file in `~/.fsv/plugins` or ship an entry-point package ([docs/WRITING_MODULES.md](docs/WRITING_MODULES.md)). Bring your own JS-library advisories and EOL dates.
+- **Fast & polite** — async engine, shared HTTP client with response cache, request coalescing, token-bucket rate limit, retries, size cap, time limit with partial results.
+- **Five report formats** — Markdown (OWASP-grouped), JSON, self-contained HTML, SARIF 2.1, CSV.
+- **Liquid-glass dashboard** — risk gauge, **attack-path panel**, OWASP breakdown, trend sparkline, inline triage, module picker, scan compare, live progress that survives a page reload.
+- **MCP server** — Claude, Cursor or any MCP client can run an authorized assessment, lead with the attack paths, and generate the fixes.
+- **Local-first** — results in a local SQLite file. Nothing phones home; the only optional third-party calls are listed in [DEPLOYMENT.md](docs/DEPLOYMENT.md#network-egress).
 
 ## Install
 
 ```bash
-git clone https://github.com/fsvproject/fsv.git
-cd fsv
-./install.sh
-source .venv/bin/activate
+git clone <this repository> && cd fsv
+./install.sh && source .venv/bin/activate     # or:  python -m venv .venv && . .venv/bin/activate && pip install .
+fsv doctor                                    # checks Python, dependencies, DNS, database, plugins
 ```
 
-Or manually:
+Requires **Python 3.11+**. Docker: see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) (`docker compose up`).
+
+## Quick start
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
+fsv scan example.com --authorize                       # full scan of a site you own
+fsv scan example.com --authorize --profile passive     # read-only: no payloads sent
+fsv web                                                # dashboard → http://127.0.0.1:7474
 ```
-
-Requires **Python 3.11+**.
-
-## Usage
-
-### Web dashboard
-
-```bash
-fsv web
-# → http://127.0.0.1:7474
-```
-
-Enter a target, tick the authorization box, and run. Progress streams live; findings are grouped by severity and exportable.
 
 ### CLI
 
 ```bash
-# Full scan (authorization flag is mandatory)
-fsv scan example.com --authorize
+# scope & tuning
+fsv scan example.com --authorize --exclude "/admin/*,/logout" --max-urls 100 --max-time 900 --tag prod
+fsv scan example.com --authorize --header "Authorization: Bearer X" --cookie "session=abc"    # authenticated
+fsv scan example.com --authorize --ct-logs        # also ask Certificate Transparency (crt.sh) for subdomains*
+fsv scan example.com --authorize --no-external    # skip modules that contact hosts other than the target
 
-# Scan a single URL, no crawl, write a report
-fsv scan "https://example.com/search?q=test" --authorize --no-crawl -o report.md
+# reports & fixes
+fsv scan example.com --authorize -o report.html   # .md .json .html .sarif .csv
+fsv report <scan_id> --format fix-nginx           # or fix-apache fix-caddy fix-express fix-dns
+fsv fixes  <scan_id> nginx -o nginx-fixes.md
 
-# Only specific modules, and exclude paths from the crawl
-fsv scan example.com --authorize --modules headers,ssl,xss,sqli
-fsv scan example.com --authorize --exclude "/admin/*,/logout" --tag prod
-
-# Authenticated scan (extra headers / cookies, repeatable)
-fsv scan example.com --authorize --header "Authorization: Bearer X" --cookie "session=abc"
-
-# Export a report in any format (inferred from extension)
-fsv scan example.com --authorize -o report.html      # or .md / .json / .sarif / .csv
-
-# CI gate — exit non-zero if a high-or-worse finding exists
-fsv scan example.com --authorize --fail-on high
-
-# List past scans / print or export a report
-fsv list                       # filter with --target example.com
-fsv report <scan_id> --format html -o report.html
-fsv findings <scan_id>         # show finding IDs for triage
-
-# Triage a finding (persists per host, carries to future scans)
+# triage, history, diff
+fsv findings <scan_id>
 fsv triage <scan_id> <finding_id> false_positive --note "test endpoint"
+fsv list --target example.com   ·   fsv diff <before_id> <after_id>   ·   fsv prune --keep 50
 
-# Compare two scans (before/after a fix)
-fsv diff <baseline_id> <current_id>
+# ownership proof (for shared deployments)           # * sends the domain name to crt.sh
+fsv verify example.com   ·   fsv verify example.com --check
 
-# Time-box a scan (partial results are kept)
-fsv scan example.com --authorize --max-time 600
-
-# Housekeeping
-fsv prune --keep 50
-fsv modules                    # list all modules, --json for machine output
+fsv modules   ·   fsv doctor
 ```
 
-### MCP server
+### In CI
 
-Run the server:
+```toml
+# fsv.toml  (commit it; ${VAR} is read from the environment — never commit secrets)
+[scan]
+profile  = "balanced"
+max_urls = 100
+exclude  = ["/admin/*"]
+max_time = 900
+fail_on  = "high"
+baseline = ".fsv-baseline.json"
+[scan.headers]
+Authorization = "Bearer ${FSV_API_TOKEN}"
+```
 
 ```bash
-fsv mcp
+fsv scan staging.example.com --authorize --write-baseline .fsv-baseline.json    # once: accept today's state
+fsv scan staging.example.com --authorize                                         # every build: fails only on NEW high+ findings
 ```
 
-Register it with your AI client. Example `claude_desktop_config.json` / MCP client config:
+```yaml
+# .github/workflows/security.yml   (the action lives in this repository's action.yml)
+- uses: <owner>/fsv@<tag-or-sha>
+  with:
+    target: https://staging.example.com
+    authorized: "true"          # you confirm you may test this target
+    profile: balanced
+    fail-on: high
+    baseline: .fsv-baseline.json
+```
+SARIF is uploaded to GitHub code scanning; the HTML report and log are attached as an artifact.
+
+### MCP (AI agents)
 
 ```json
-{
-  "mcpServers": {
-    "fsv": {
-      "command": "fsv-mcp"
-    }
-  }
-}
+{ "mcpServers": { "fsv": { "command": "fsv-mcp" } } }
 ```
-
-> If you installed in a virtualenv, point `command` at the venv binary, e.g.
-> `"/path/to/fsv/.venv/bin/fsv-mcp"`.
-
-Then, in your AI client, you can say things like:
-
-> *"I own example.com. Use FSV to run a security scan and summarize the critical issues with fixes."*
-
-The agent calls `fsv_scan` with `authorized=true`, then `fsv_get_report` for the formatted writeup.
-
-**MCP tools exposed:**
+> *"I own example.com. Use FSV to scan it, tell me the attack paths first, then give me the nginx fixes."*
 
 | Tool | Purpose |
-|------|---------|
-| `fsv_scan` | Full active scan (all modules) |
-| `fsv_quick_check` | Fast passive check (headers, SSL, cookies, tech) — no payloads sent |
-| `fsv_get_report` | Report for a scan (md / json / html / sarif / csv) |
-| `fsv_list_scans` | List recent scans (filter by host) |
-| `fsv_compare_scans` | Diff two scans — resolved / new / verdict |
-| `fsv_target_trend` | Risk-score trend for a host over time |
-| `fsv_triage` | Mark a finding FP / accepted / fixed (persists per host) |
-| `fsv_scan_stats` | HTTP statistics for a scan |
-| `fsv_list_modules` | Describe all scan modules |
+|---|---|
+| `fsv_scan` | Full scan (profiles, scope, time-box; CT logs and external checks opt-in) |
+| `fsv_quick_check` / `fsv_waf_check` | Passive posture check / WAF-CDN detection |
+| `fsv_get_report` | md · json · html · sarif · csv · `fix-*` |
+| `fsv_fixes` | Paste-ready nginx / apache / caddy / express / DNS remediation |
+| `fsv_triage` | Mark false positive / accepted / fixed (persists per host) |
+| `fsv_compare_scans` · `fsv_target_trend` | Before/after a fix · risk over time |
+| `fsv_list_scans` · `fsv_scan_stats` · `fsv_list_modules` | History · request stats · catalogue |
 
-## Scan modules
+Scan results carry an `attack_paths` section so the agent can lead with what matters.
 
-| Module | Checks for | Typical severity |
-|--------|-----------|------------------|
-| `headers` | Missing/weak HSTS, CSP, X-Frame-Options, X-Content-Type-Options, etc. | info–high |
-| `ssl` | HTTP-only, expired/self-signed certs, weak TLS protocols & ciphers | medium–critical |
-| `xss` | Reflected cross-site scripting in URL parameters | high |
-| `sqli` | Error-based SQL injection in URL parameters | critical |
-| `cors` | Wildcard origin, arbitrary origin reflection, null origin + credentials | medium–critical |
-| `cookies` | Missing Secure / HttpOnly / SameSite flags | low–high |
-| `csrf` | POST forms lacking CSRF tokens and SameSite protection | high |
-| `open_redirect` | External redirects via `next`, `url`, `redirect`, … params | medium |
-| `paths` | Exposed `.git`, `.env`, backups, admin panels, API docs (with catch-all calibration) | low–critical |
-| `info_disclosure` | Leaked keys/secrets, stack traces, internal IPs | low–critical |
-| `clickjacking` | Missing frame protection | medium |
-| `tech` | Technology fingerprint + outdated-software hints | info–medium |
-| `http_methods` | Dangerous HTTP methods enabled (TRACE, PUT, DELETE, CONNECT) | low–high |
-| `dns_security` | Email/DNS anti-spoofing records (SPF, DMARC, CAA) | low–medium |
-| `dir_listing` | Directory listing / auto-index enabled | medium |
-| `mixed_content` | HTTP resources loaded on HTTPS pages | low–medium |
-| `subdomain` | Subdomain enumeration + exposed sensitive subdomains | info–medium |
-| `ssti` | Server-Side Template Injection (benign math marker, no RCE) | critical |
-| `host_header_injection` | Host header injection → redirect / cache poisoning | low–medium |
-| `jwt_analysis` | JWT weaknesses (alg:none, weak HMAC, sensitive claims) | low–high |
-| `waf_detect` | WAF/CDN fingerprinting (Cloudflare, AWS, Akamai, …) | info |
-| `security_txt` | security.txt / disclosure policy (RFC 9116) | info–low |
-| `graphql_introspection` | GraphQL introspection exposure | medium |
-| `csp_analyzer` | Deep CSP review (missing object-src/base-uri/frame-ancestors, wildcard sources, report-only, no reporting) | info–medium |
-| `sri` | Third-party scripts/styles without Subresource Integrity | low |
-| `form_security` | Password forms over HTTP, submitted via GET, missing autocomplete hints | info–high |
+## Modules (30)
 
-### Scan profiles
+| Module | Looks for | Kind |
+|---|---|---|
+| `takeover` | dangling CNAME / unclaimed SaaS resource / unregistered target domain | passive · site · ↗ |
+| `cloud_storage` | orphaned or publicly-listable S3 / GCS / Azure buckets referenced by the site | passive · url · ↗ |
+| `dns_security` | SPF (10-lookup limit, dead includes, `+all`), DMARC, DKIM key strength, MTA-STS, dead NS/MX, CAA, DNSSEC | passive · site |
+| `js_analysis` | hard-coded credentials, exposed source maps, internal/non-prod hosts in client code | passive · url |
+| `js_libs` | known-vulnerable & end-of-life JavaScript libraries | passive · url |
+| `paths` | ~100 exposed files/endpoints, each content-validated (`.git`, `.env`, actuator, pprof, tfstate, backups…) | passive · site |
+| `tech` | stack fingerprint + **end-of-life** software from a dated table | passive · site |
+| `headers` · `csp_analyzer` | security headers · deep CSP review | passive |
+| `ssl` | HTTPS, certificate validity, weak protocols/ciphers | passive · site |
+| `cookies` | Secure / HttpOnly / SameSite / parent-domain scope | passive |
+| `sri` · `mixed_content` · `clickjacking` · `form_security` · `csrf` | page-level hygiene | passive |
+| `info_disclosure` · `dir_listing` · `http_methods` · `security_txt` · `waf_detect` · `graphql_introspection` · `jwt_analysis` · `subdomain` | exposure & recon | passive |
+| `xss` · `sqli` · `ssti` · `open_redirect` · `cors` · `host_header_injection` | reflected/error-based/marker checks (benign payloads) | **active** |
 
-```bash
-fsv scan example.com --authorize --profile passive      # no payloads, safe recon
-fsv scan example.com --authorize --profile balanced     # default
-fsv scan example.com --authorize --profile aggressive   # all modules, higher rate
-```
+↗ contacts hosts other than the target (skip with `--no-external`). `passive` = sends no crafted payloads. **Profiles:** `passive` (only passive modules), `balanced` (default), `aggressive` (higher rate/concurrency).
 
-### MCP tools
-
-`fsv_scan` · `fsv_quick_check` · `fsv_waf_check` · `fsv_get_report` (md/json/html/sarif/csv) · `fsv_list_scans` · `fsv_compare_scans` · `fsv_target_trend` · `fsv_triage` · `fsv_scan_stats` · `fsv_list_modules`
-
-## Architecture
-
-```
-fsv/
-├── core/
-│   ├── engine.py      crawler + orchestration + aggregation
-│   ├── scanner.py     BaseScanner (shared fetch helpers)
-│   ├── http_client.py cache · coalescing · rate limit · retries · stats
-│   ├── models.py      typed models, validation, risk scoring, triage states
-│   ├── taxonomy.py    CWE → OWASP Top 10 mapping
-│   ├── database.py    SQLite (scans + triage), auto-migrating
-│   ├── diff.py        scan comparison
-│   └── report.py      md / json / html / sarif / csv
-├── modules/           one file per scan module (26)
-├── web/               FastAPI API + glassmorphism dashboard (static/)
-├── mcp/               MCP server (stdio)
-└── cli.py             command-line interface
-```
-
-The engine crawls the target within its exact origin, then runs site-wide modules
-once (tech, SSL, DNS, paths) and per-URL modules against each discovered URL under a
-bounded-concurrency semaphore. Findings are aggregated by a host-scoped fingerprint
-(so one issue across many pages is one finding), triage decisions are overlaid, and
-the result is sorted by severity then confidence.
-
-### Configuration (environment variables)
+## Configuration
 
 | Variable | Default | Purpose |
-|----------|---------|---------|
+|---|---|---|
 | `FSV_HOST` / `FSV_PORT` | `127.0.0.1` / `7474` | dashboard bind address |
-| `FSV_DB` | `~/.fsv/scans.db` | SQLite database path |
-| `FSV_TOKEN` | *(unset)* | if set, every `/api` and `/ws` call must send it (`X-FSV-Token` header or `?token=`) — recommended when not bound to loopback |
-| `FSV_MAX_SCANS` | `3` | max concurrent scans the web server will run |
-| `FSV_DISABLED_MODULES` | *(none)* | comma-separated module names to disable without code changes |
-| `FSV_ALLOWED_HOSTS` | *(none)* | extra Host names the dashboard may be reached by (loopback + `FSV_HOST` always allowed; `*` = any) |
+| `FSV_DB` | `~/.fsv/scans.db` | SQLite database |
+| `FSV_TOKEN` | — | shared secret required on every API / WebSocket call (`X-FSV-Token` or `?token=`) |
+| `FSV_ALLOWED_HOSTS` | — | extra `Host` names the dashboard answers to (DNS-rebinding guard) |
+| `FSV_BLOCK_PRIVATE` | off | refuse loopback / RFC 1918 targets (SSRF protection). Cloud-metadata ranges are *always* refused |
+| `FSV_REQUIRE_VERIFICATION` | off | payload-sending scans only against hosts whose owner proved control |
+| `FSV_MAX_SCANS` | `3` | concurrent scans |
+| `FSV_DISABLED_MODULES` | — | comma-separated module names to turn off |
+| `FSV_PLUGIN_DIR` / `FSV_NO_PLUGINS` | `~/.fsv/plugins` / off | plugin discovery |
+| `FSV_ADVISORY_FILE` / `FSV_EOL_FILE` | — | your own JS-library advisories / end-of-life dates (JSON) |
 
-### Dashboard security
+## Limits — what FSV is *not*
 
-The dashboard listens on loopback, but any web page open in your browser can still
-talk to loopback. FSV's request guard (`fsv/web/security.py`) blocks that:
+* It reads HTML; it does **not execute JavaScript**, so content that only exists after client-side rendering isn't discovered.
+* Active checks cover common reflected classes with benign markers. It is **not** a replacement for a penetration test, SAST or an SCA pipeline.
+* The JS-advisory and end-of-life tables are curated snapshots — cross-check with OSV / endoflife.date for anything important, and extend them with the files above.
+* DNS checks are only as good as the resolver (`fsv doctor` tests it). A resolver that can't answer produces *no* DNS findings, not bad ones.
+* Findings carry a **confidence**; tentative ones are hints. Triage them, and tell us about false positives — they're the most useful bug reports.
 
-- **DNS rebinding** — requests whose `Host` isn't loopback / `FSV_HOST` / `FSV_ALLOWED_HOSTS` get a 403.
-- **CSRF** — state-changing requests and WebSocket handshakes with a foreign `Origin`
-  (or `Sec-Fetch-Site: cross-site`) are refused, and request bodies must be `application/json`.
-- **Token** — with `FSV_TOKEN` set, every API/WebSocket call needs it. Open the dashboard once
-  as `http://127.0.0.1:7474/?token=…`; the browser remembers it.
+## Documentation
 
-If you bind to `0.0.0.0` (e.g. in a container), set `FSV_TOKEN` — FSV warns at start-up if you don't.
-
-### CI gating
-
-```bash
-# fail the build if any high-or-worse finding exists; never run longer than 15 min
-fsv scan example.com --authorize --fail-on high --max-time 900 -o report.sarif
-```
-
-### Reports never re-leak secrets
-
-When FSV finds an exposed `.env`, credentials file or an API key in a page, the report
-shows *where* and *which key* — values are masked (`DB_PASSWORD=****`, `AKIA…****LE`),
-so the report itself doesn't become a second copy of the leak.
-
-### Development
-
-```bash
-pip install -e . -r requirements-dev.txt
-pytest -q        # unit + integration tests (spins up local test servers, no internet needed)
-```
-
-## How reports work
-
-FSV reports are **defensive**: each finding explains *what* the issue is, *why* it
-matters (impact), and *how to fix it* (remediation), with CWE and OWASP references.
-FSV does not generate weaponized exploits — it tells you where you're exposed and
-how to close the gap.
+[Detections](docs/DETECTIONS.md) · [Architecture](docs/ARCHITECTURE.md) · [Writing modules](docs/WRITING_MODULES.md) · [Deploying safely](docs/DEPLOYMENT.md) · [Security policy](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
 ## License
 

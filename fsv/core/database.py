@@ -22,7 +22,7 @@ from fsv import config
 from fsv.core.models import Finding, FindingStatus, ScanResult, ScanStatus
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # columns added after v1 — (name, DDL type/default)
 _SCAN_COLUMNS_V2 = [
@@ -124,6 +124,17 @@ async def _init_schema() -> None:
                 note        TEXT DEFAULT '',
                 updated_at  TEXT NOT NULL,
                 PRIMARY KEY (host, fingerprint)
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS verified_hosts (
+                domain      TEXT NOT NULL,
+                method      TEXT NOT NULL,
+                verified_at TEXT NOT NULL,
+                PRIMARY KEY (domain, method)
             )
         """)
         await db.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
@@ -331,14 +342,24 @@ async def apply_triage(result: ScanResult) -> ScanResult:
 
 
 def _overlay(result: ScanResult, triage: dict[str, tuple[str, str]]) -> None:
+    """
+    Make the triage table the single source of truth for user decisions: a
+    finding with a stored decision gets it, every other finding is OPEN. (Status
+    values persisted inside the scan JSON are only a snapshot — treating them as
+    authoritative left findings stuck as "false positive" after being re-opened.)
+    """
+    from fsv.core.correlate import refresh_chains
     for f in result.findings:
         hit = triage.get(f.fingerprint)
         if hit:
             try:
                 f.status = FindingStatus(hit[0])
             except ValueError:
-                pass
+                f.status = FindingStatus.OPEN
             f.triage_note = hit[1] or ""
+        else:
+            f.status, f.triage_note = FindingStatus.OPEN, ""
+    refresh_chains(result.findings)      # attack paths follow the status of their links
 
 
 # ── stats ─────────────────────────────────────────────────────────────────────
@@ -385,7 +406,10 @@ def _row_to_result(row) -> ScanResult:
             findings.append(Finding(**raw))
         except Exception:
             continue   # one malformed legacy record shouldn't hide the scan
+    stats = json.loads(_col(row, "stats", "{}"))
+    samples = stats.pop("module_error_samples", {}) if isinstance(stats, dict) else {}
     return ScanResult(
+        module_error_samples = samples,
         scan_id       = row["scan_id"],
         target        = row["target"],
         status        = ScanStatus(row["status"]),
@@ -396,10 +420,53 @@ def _row_to_result(row) -> ScanResult:
         tech_stack    = json.loads(row["tech_stack"] or "[]"),
         findings      = findings,
         error         = row["error"],
-        stats         = json.loads(_col(row, "stats", "{}")),
+        stats         = stats,
         profile       = _col(row, "profile", "balanced"),
         modules_run   = json.loads(_col(row, "modules_run", "[]")),
         module_errors = json.loads(_col(row, "module_errors", "{}")),
         urls          = json.loads(_col(row, "urls", "[]")),
         tags          = json.loads(_col(row, "tags", "[]")),
     )
+
+
+# ── ownership verification ────────────────────────────────────────────────────
+
+async def get_install_secret() -> str:
+    """Per-installation secret used to derive verification tokens (created on first use)."""
+    from fsv.core.ownership import new_secret
+    await init_db()
+    async with _connect() as db:
+        async with db.execute("SELECT value FROM meta WHERE key='verify_secret'") as cur:
+            row = await cur.fetchone()
+        if row:
+            return row[0]
+        secret = new_secret()
+        await db.execute("INSERT OR IGNORE INTO meta (key, value) VALUES ('verify_secret', ?)", (secret,))
+        await db.commit()
+        async with db.execute("SELECT value FROM meta WHERE key='verify_secret'") as cur:
+            return (await cur.fetchone())[0]          # a concurrent writer may have won
+
+
+async def add_verified(domain: str, method: str) -> None:
+    await init_db()
+    async with _connect() as db:
+        await db.execute("""
+            INSERT INTO verified_hosts (domain, method, verified_at) VALUES (?,?,?)
+            ON CONFLICT(domain, method) DO UPDATE SET verified_at = excluded.verified_at
+        """, (domain.lower(), method, datetime.now(timezone.utc).isoformat()))
+        await db.commit()
+
+
+async def list_verified() -> list[dict]:
+    from fsv.core.ownership import expired
+    await init_db()
+    async with _connect() as db:
+        async with db.execute("SELECT domain, method, verified_at FROM verified_hosts ORDER BY domain") as cur:
+            rows = await cur.fetchall()
+    return [{"domain": d, "method": m, "verified_at": t, "expired": expired(t)} for d, m, t in rows]
+
+
+async def is_host_verified(host: str) -> bool:
+    """Is there an unexpired proof that covers `host`?"""
+    from fsv.core.ownership import covers
+    return any(not r["expired"] and covers(r["domain"], r["method"], host) for r in await list_verified())

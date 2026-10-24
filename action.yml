@@ -1,0 +1,72 @@
+name: "FSV web security scan"
+description: >
+  Scan a site you own with FSV in CI. Fails the job on new findings at or above a severity,
+  and uploads SARIF to GitHub code scanning. Only scan systems you are authorized to test.
+author: "FSV"
+branding: { icon: shield, color: gray-dark }
+
+inputs:
+  target:        { description: "URL or host to scan", required: true }
+  authorized:    { description: "Set to 'true' to confirm you own / may test the target (required)", required: true }
+  profile:       { description: "passive | balanced | aggressive", default: "passive" }
+  fail-on:       { description: "critical | high | medium | low | info — gate severity", default: "high" }
+  baseline:      { description: "Path to a baseline file; only NEW findings fail the job", default: "" }
+  max-time:      { description: "Seconds before the scan stops (partial results kept)", default: "900" }
+  extra-args:    { description: "Extra arguments passed to `fsv scan`", default: "" }
+  upload-sarif:  { description: "Upload results to GitHub code scanning", default: "true" }
+  fsv-version:   { description: "pip requirement for FSV", default: "fsv" }
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v6
+      with: { python-version: "3.12" }
+    - name: Install FSV
+      shell: bash
+      run: python -m pip install --quiet "${{ inputs.fsv-version }}"
+    - name: Scan
+      id: scan
+      shell: bash
+      env:
+        # every input goes through the environment — never interpolated into the script text
+        FSV_TARGET: ${{ inputs.target }}
+        FSV_AUTHORIZED: ${{ inputs.authorized }}
+        FSV_PROFILE: ${{ inputs.profile }}
+        FSV_FAIL_ON: ${{ inputs.fail-on }}
+        FSV_BASELINE: ${{ inputs.baseline }}
+        FSV_MAX_TIME: ${{ inputs.max-time }}
+        FSV_EXTRA: ${{ inputs.extra-args }}
+      run: |
+        if [ "$FSV_AUTHORIZED" != "true" ]; then
+          echo "::error::Set 'authorized: true' to confirm you may test this target."; exit 2
+        fi
+        args=(scan "$FSV_TARGET" --authorize --quiet --profile "$FSV_PROFILE"
+              --fail-on "$FSV_FAIL_ON" --max-time "$FSV_MAX_TIME" -o fsv.sarif)
+        [ -n "$FSV_BASELINE" ] && args+=(--baseline "$FSV_BASELINE")
+        if [ -n "$FSV_EXTRA" ]; then read -ra extra <<< "$FSV_EXTRA"; args+=("${extra[@]}"); fi
+        set +e
+        fsv "${args[@]}" 2>&1 | tee fsv.log
+        code=${PIPESTATUS[0]}
+        set -e
+        echo "exit=$code" >> "$GITHUB_OUTPUT"
+        id=$(grep -m1 'scan_id:' fsv.log | awk '{print $2}')
+        [ -n "$id" ] && fsv report "$id" --format html -o fsv-report.html || true
+    - name: Upload SARIF
+      if: ${{ inputs.upload-sarif == 'true' && hashFiles('fsv.sarif') != '' }}
+      uses: github/codeql-action/upload-sarif@v3
+      with: { sarif_file: fsv.sarif, category: fsv }
+    - name: Upload report
+      if: ${{ hashFiles('fsv-report.html') != '' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: fsv-report
+        path: |
+          fsv.sarif
+          fsv-report.html
+          fsv.log
+    - name: Gate
+      shell: bash
+      env:
+        SCAN_EXIT: ${{ steps.scan.outputs.exit }}
+      run: |
+        [ "${SCAN_EXIT:-0}" = "0" ] || { echo "::error::FSV gate failed (exit $SCAN_EXIT)"; exit "$SCAN_EXIT"; }

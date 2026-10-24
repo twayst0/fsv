@@ -12,6 +12,7 @@ from fsv.core.models import Finding, Severity, Confidence
 class FormSecurityScanner(BaseScanner):
     """Looks at forms that carry a password field. Reads HTML only."""
     name     = "form_security"
+    description = "Login/password forms: HTTPS action, autocomplete, GET submission"
     category = "passive"
     scope    = "url"
 

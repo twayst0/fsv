@@ -10,6 +10,9 @@ from fsv.config import SQLI_PAYLOADS, SQLI_ERROR_SIGNATURES
 
 class SQLiScanner(BaseScanner):
     name = "sqli"
+    category    = "active"
+    scope       = "url"
+    description = "Error-based SQL injection in URL parameters"
 
     async def scan(self, url: str) -> list[Finding]:
         parsed = urlparse(url)

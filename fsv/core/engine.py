@@ -16,6 +16,7 @@ Pipeline
 from __future__ import annotations
 import asyncio
 import fnmatch
+import logging
 import uuid
 from collections import deque
 from datetime import datetime, timezone
@@ -25,17 +26,22 @@ from urllib.parse import urljoin, urlparse, urlencode
 import aiohttp
 from bs4 import BeautifulSoup
 
-from fsv.config import USER_AGENT, MODULES_ENABLED
+from fsv.config import USER_AGENT, MODULES_ENABLED, BLOCK_PRIVATE, REQUIRE_VERIFICATION
 from fsv.core.models import (
     Finding, ScanConfig, ScanResult, ScanStatus, ScanProgress, ScanProfile,
     SEVERITY_ORDER, Confidence,
 )
 from fsv.core import database as db
 from fsv.core import registry
+from fsv.core.correlate import correlate
+from fsv.core import ownership
 from fsv.core.http_client import HTTPClient
+from fsv.core.netsafety import make_connector, make_trace_config, check_target
 
 
 ProgressCallback = Callable[[ScanProgress], None]
+
+log = logging.getLogger("fsv.engine")
 
 
 # Backwards-compatible alias (some callers import these from engine)
@@ -92,6 +98,9 @@ def _select_modules(cfg: ScanConfig) -> list[str]:
     all_modules = registry.load_registry()
     wanted = cfg.modules or [m for m in all_modules if MODULES_ENABLED.get(m, True)]
     wanted = [m for m in dict.fromkeys(wanted) if m in all_modules]
+    if not cfg.allow_external:
+        # modules that contact hosts other than the target (cloud storage, subdomain probes…)
+        wanted = [m for m in wanted if not all_modules[m].external]
     return registry.select_modules(cfg.profile, wanted)
 
 
@@ -140,13 +149,16 @@ async def run_scan(
 
     limit = scan_config.max_duration or None
     try:
+        await check_target(scan_config.target, allow_private=not BLOCK_PRIVATE)
+        await _require_proof_of_control(scan_config)
         async with asyncio.timeout(limit):
-            connector  = aiohttp.TCPConnector(ssl=False, limit=max(20, threads * 2))
+            connector  = make_connector(max(20, threads * 2), allow_private=not BLOCK_PRIVATE)
             cookie_jar = aiohttp.CookieJar(unsafe=True)
             hdrs = {"User-Agent": scan_config.user_agent or USER_AGENT, **scan_config.headers}
             async with aiohttp.ClientSession(
                 connector=connector, cookie_jar=cookie_jar,
                 headers=hdrs, cookies=scan_config.cookies,
+                trace_configs=[make_trace_config(not BLOCK_PRIVATE)],
             ) as session:
                 http = HTTPClient(
                     session,
@@ -176,8 +188,12 @@ async def run_scan(
                 site_modules    = [k for k in scanners if registry.is_site_wide(k)]
                 per_url_modules = [k for k in scanners if not registry.is_site_wide(k)]
 
-                def _module_failed(name: str) -> None:
+                def _module_failed(name: str, exc: BaseException, where: str) -> None:
                     result.module_errors[name] = result.module_errors.get(name, 0) + 1
+                    msg = f"{type(exc).__name__}: {exc}"[:300]
+                    result.module_error_samples.setdefault(name, f"{msg}  (on {where})")
+                    log.warning("module %s failed on %s: %s", name, where, msg,
+                                exc_info=log.isEnabledFor(logging.DEBUG))
 
                 # 3) SITE-WIDE MODULES — concurrently, once on the base target
                 site_done = 0
@@ -188,8 +204,8 @@ async def run_scan(
                         findings = await scanners[name].scan(scan_config.target)
                     except asyncio.CancelledError:
                         raise
-                    except Exception:
-                        _module_failed(name)
+                    except Exception as exc:
+                        _module_failed(name, exc, scan_config.target)
                         findings = []
                     result.findings.extend(findings)
                     if name == "tech":
@@ -216,8 +232,8 @@ async def run_scan(
                             found = await scanners[name].scan(url)
                         except asyncio.CancelledError:
                             raise
-                        except Exception:
-                            _module_failed(name)
+                        except Exception as exc:
+                            _module_failed(name, exc, url)
                             found = []
                         result.findings.extend(found)
                         done += 1
@@ -247,6 +263,9 @@ async def run_scan(
             task.uncancel()
         result.status = ScanStatus.CANCELLED
 
+    except ownership.OwnershipRequired as exc:
+        result.status = ScanStatus.FAILED
+        result.error  = str(exc)
     except Exception as exc:
         result.status = ScanStatus.FAILED
         result.error  = f"{type(exc).__name__}: {exc}"
@@ -267,10 +286,30 @@ async def run_scan(
     return result
 
 
+async def _require_proof_of_control(cfg: ScanConfig) -> None:
+    """Shared-service rule: payload-sending scans need proof the target belongs to the requester."""
+    if not REQUIRE_VERIFICATION:
+        return
+    selected = _select_modules(cfg)
+    if all(registry.is_passive(m) for m in selected):
+        return                                           # read-only: allowed anywhere public
+    if await ownership.is_local_target(cfg.target):
+        return                                           # local development
+    host = urlparse(cfg.target).hostname or ""
+    if await db.is_host_verified(host):
+        return
+    info = ownership.instructions(host, await db.get_install_secret())
+    raise ownership.OwnershipRequired(ownership.refusal_message(host, info))
+
+
 def _finalize(result: ScanResult, http: HTTPClient | None, started_at: str) -> None:
-    result.findings = sort_findings(aggregate_findings(result.findings))
+    merged = aggregate_findings(result.findings)
+    result.findings = sort_findings(merged + correlate(merged))
     if http is not None:
         result.stats = http.stats.as_dict()
+    if result.module_error_samples:
+        result.stats["module_error_samples"] = dict(result.module_error_samples)
+    if http is not None:
         if http.stats.requests and not http.stats.responses and not result.error:
             result.error = ("target unreachable — no HTTP response was received; "
                             "only non-HTTP checks (e.g. DNS) produced results")

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 import asyncio
+import json
+import logging
 import sys
 
 import click
@@ -17,6 +19,9 @@ from fsv.core.models import ScanConfig, ScanProfile, FindingStatus, normalize_ta
 from fsv.core import engine, database as db, registry
 from fsv.core import report as report_mod
 from fsv.core.diff import compare
+from fsv.core import baseline as baseline_mod
+from fsv.core import fixes as fixes_mod
+from fsv.core import settings as settings_mod
 
 console = Console()
 
@@ -38,10 +43,15 @@ def cli(ctx):
         console.print(ctx.get_help())
 
 
+_ORDER = ["info", "low", "medium", "high", "critical"]
+
+
 @cli.command()
 @click.argument("target")
 @click.option("--authorize", is_flag=True,
               help="Confirm you own or are authorized to test this target (REQUIRED).")
+@click.option("--config", "config_path", default=None, type=click.Path(dir_okay=False),
+              help="Settings file (default: ./fsv.toml if present). Flags override it.")
 @click.option("--profile", type=click.Choice(["passive", "balanced", "aggressive"]),
               default="balanced", help="Scan intensity profile.")
 @click.option("--no-crawl", is_flag=True, help="Scan only the given URL, don't crawl.")
@@ -57,13 +67,28 @@ def cli(ctx):
 @click.option("--tag", "tags", multiple=True, help="Label this scan (repeatable).")
 @click.option("--robots", is_flag=True, help="Respect robots.txt disallow rules.")
 @click.option("--max-time", default=0, help="Stop after N seconds and keep partial results (0 = no limit).")
+@click.option("--ct-logs", is_flag=True,
+              help="Also query Certificate Transparency logs (crt.sh) for subdomains. "
+                   "Sends the domain name to a third party.")
+@click.option("--no-external", is_flag=True,
+              help="Skip modules that contact hosts other than the target (takeover, cloud storage).")
+@click.option("--baseline", "baseline_path", default=None, type=click.Path(dir_okay=False),
+              help="Known-findings file; only NEW findings count for --fail-on.")
+@click.option("--write-baseline", default=None, type=click.Path(dir_okay=False),
+              help="Write this scan's findings as a baseline file.")
 @click.option("-o", "--output", default="", help="Write report to file (.md/.json/.html/.sarif/.csv).")
-@click.option("--fail-on", type=click.Choice(["critical", "high", "medium", "low", "info"]),
-              default=None, help="Exit non-zero if a finding of this severity or worse exists (CI gate).")
+@click.option("--fail-on", type=click.Choice(_ORDER), default=None,
+              help="Exit 1 if a finding of this severity or worse exists (CI gate; with --baseline: new ones only).")
 @click.option("--quiet", is_flag=True, help="Suppress live progress.")
-def scan(target, authorize, profile, no_crawl, max_urls, depth, threads, timeout, rate,
-         modules, exclude, headers, cookies, tags, robots, max_time, output, fail_on, quiet):
+@click.option("-v", "--verbose", is_flag=True, help="Log module errors and engine details to stderr.")
+@click.pass_context
+def scan(ctx, target, authorize, config_path, profile, no_crawl, max_urls, depth, threads, timeout, rate,
+         modules, exclude, headers, cookies, tags, robots, max_time, ct_logs, no_external,
+         baseline_path, write_baseline, output, fail_on, quiet, verbose):
     """Run a vulnerability scan against TARGET."""
+    # -v turns on FSV's own debug logging only — never the DEBUG firehose of third-party libraries
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s", stream=sys.stderr)
+    logging.getLogger("fsv").setLevel(logging.DEBUG if verbose else logging.WARNING)
     if not authorize:
         console.print(Panel(
             "[bold red]Authorization required.[/]\n\n"
@@ -79,17 +104,62 @@ def scan(target, authorize, profile, no_crawl, max_urls, depth, threads, timeout
         console.print(f"[red]Invalid target:[/] {exc}")
         sys.exit(2)
 
+    # settings file: applies only to options the user did NOT pass explicitly
+    cfg_file = config_path or settings_mod.find_default()
+    if cfg_file:
+        try:
+            file_cfg = settings_mod.load_scan_config(cfg_file)
+        except (settings_mod.ConfigError, OSError) as exc:
+            console.print(f"[red]Config error:[/] {exc}")
+            sys.exit(2)
+
+        def given(name: str) -> bool:
+            return ctx.get_parameter_source(name).name != "DEFAULT"
+
+        profile  = profile  if given("profile")  else file_cfg.get("profile", profile)
+        max_urls = max_urls if given("max_urls") else file_cfg.get("max_urls", max_urls)
+        depth    = depth    if given("depth")    else file_cfg.get("depth", depth)
+        threads  = threads  if given("threads")  else file_cfg.get("threads", threads)
+        timeout  = timeout  if given("timeout")  else file_cfg.get("timeout", timeout)
+        rate     = rate     if given("rate")     else file_cfg.get("rate", rate)
+        max_time = max_time if given("max_time") else file_cfg.get("max_time", max_time)
+        fail_on  = fail_on  if given("fail_on")  else file_cfg.get("fail_on", fail_on)
+        baseline_path = baseline_path if given("baseline_path") else file_cfg.get("baseline", baseline_path)
+        no_crawl = no_crawl or (file_cfg.get("crawl") is False)
+        robots   = robots   or bool(file_cfg.get("robots"))
+        ct_logs  = ct_logs  or bool(file_cfg.get("ct_logs"))
+        no_external = no_external or (file_cfg.get("external") is False)
+        if not modules and file_cfg.get("modules"):
+            modules = ",".join(file_cfg["modules"])
+        if not exclude and file_cfg.get("exclude"):
+            exclude = ",".join(file_cfg["exclude"])
+        tags = tuple(tags) + tuple(file_cfg.get("tags", []))
+        file_headers, file_cookies = file_cfg.get("headers", {}), file_cfg.get("cookies", {})
+    else:
+        file_headers, file_cookies = {}, {}
+
+    baseline = None
+    if baseline_path:
+        try:
+            baseline = baseline_mod.load_baseline(baseline_path)
+        except (OSError, ValueError) as exc:
+            console.print(f"[red]Baseline error:[/] {exc}")
+            sys.exit(2)
+
     config = ScanConfig(
         target=target,
         modules=[m.strip() for m in modules.split(",") if m.strip()],
         crawl=not no_crawl, max_urls=max_urls, depth=depth, timeout=timeout,
         threads=threads, rate_per_sec=rate, profile=ScanProfile(profile),
         exclude_paths=[p.strip() for p in exclude.split(",") if p.strip()],
-        headers=_parse_kv(headers, ":"), cookies=_parse_kv(cookies, "="),
+        headers={**file_headers, **_parse_kv(headers, ":")},
+        cookies={**file_cookies, **_parse_kv(cookies, "=")},
         tags=list(tags), respect_robots=robots, max_duration=max_time,
+        use_ct_logs=ct_logs, allow_external=not no_external,
     )
 
-    console.print(f"\n[bold white]▶ Scanning[/] [cyan]{target}[/]  [grey50]({profile})[/]\n")
+    console.print(f"\n[bold white]▶ Scanning[/] [cyan]{target}[/]  [grey50]({profile})[/]"
+                  + (f"  [grey50]config: {cfg_file}[/]" if cfg_file else "") + "\n")
     result = asyncio.run(_run_with_progress(config, quiet))
 
     _print_summary(result)
@@ -107,15 +177,29 @@ def scan(target, authorize, profile, no_crawl, max_urls, depth, threads, timeout
             f.write(content)
         console.print(f"\n[green]✓[/] {fmt.upper()} report written to [bold]{output}[/]")
 
+    if write_baseline:
+        with open(write_baseline, "w", encoding="utf-8") as f:
+            json.dump(baseline_mod.make_baseline(result), f, indent=2)
+        console.print(f"[green]✓[/] baseline of {len(result.active_findings)} finding(s) written to "
+                      f"[bold]{write_baseline}[/]")
+
     console.print(f"\n[grey70]scan_id:[/] [bold]{result.scan_id}[/]")
 
+    gated = result.active_findings
+    if baseline is not None:
+        if baseline_mod.host_mismatch(result, baseline):
+            console.print("[yellow]⚠ The baseline was written for a different host — nothing will match.[/]")
+        gated, known = baseline_mod.split_new(result, baseline)
+        console.print(f"[grey70]baseline:[/] {len(known)} known finding(s) ignored, "
+                      f"[bold]{len(gated)} new[/]")
     if fail_on:
-        order = ["info", "low", "medium", "high", "critical"]
-        threshold = order.index(fail_on)
-        worst = max((order.index(f.severity.value) for f in result.active_findings),
-                    default=-1)
-        if worst >= threshold:
-            console.print(f"\n[red]✗ Gate failed:[/] findings at or above '{fail_on}'.")
+        threshold = _ORDER.index(fail_on)
+        offenders = [f for f in gated if _ORDER.index(f.severity.value) >= threshold]
+        if offenders:
+            console.print(f"\n[red]✗ Gate failed:[/] {len(offenders)} "
+                          f"{'new ' if baseline is not None else ''}finding(s) at or above '{fail_on}':")
+            for f in offenders[:10]:
+                console.print(f"   [{SEV_COLOR[f.severity.value]}]{f.severity.value:>8}[/]  {f.title}")
             sys.exit(1)
 
 
@@ -160,7 +244,9 @@ def _print_summary(result):
     if result.tech_stack:
         t.add_row("Tech stack", ", ".join(result.tech_stack))
     if result.module_errors:
-        t.add_row("Module errors", ", ".join(f"{m}×{n}" for m, n in result.module_errors.items()))
+        t.add_row("Module errors", "\n".join(
+            f"[yellow]{m}[/]×{n}: [grey62]{result.module_error_samples.get(m, '')[:90]}[/]"
+            for m, n in result.module_errors.items()))
     console.print(t)
 
     counts = Table(box=box.SIMPLE, show_header=True, header_style="bold")
@@ -271,7 +357,7 @@ def diff(baseline_id, current_id):
 @cli.command()
 @click.argument("scan_id")
 @click.argument("finding_id")
-@click.argument("status", type=click.Choice([s.value for s in FindingStatus]))
+@click.argument("status", type=click.Choice([s.value for s in FindingStatus.user_settable()]))
 @click.option("--note", default="", help="Reason / context for this decision.")
 def triage(scan_id, finding_id, status, note):
     """Mark a finding (confirmed / false_positive / accepted_risk / fixed / open).
@@ -333,17 +419,103 @@ def modules(as_json):
         click.echo(_j.dumps(mods, indent=2)); return
     t = Table(box=box.ROUNDED, border_style="grey35")
     t.add_column("module", style="bold cyan"); t.add_column("scope")
-    t.add_column("category"); t.add_column("on", justify="center")
+    t.add_column("category"); t.add_column("ext", justify="center", style="grey62")
+    t.add_column("on", justify="center")
     t.add_column("checks", style="grey70")
     for m in mods:
         cat_color = "yellow" if m["category"] == "active" else "green"
+        src = "" if m.get("source") == "builtin" else f" [magenta]({m['source']})[/]"
         t.add_row(m["name"], m["scope"], f"[{cat_color}]{m['category']}[/]",
+                  "↗" if m.get("external") else "",
                   "[green]✓[/]" if MODULES_ENABLED.get(m["name"], True) else "[grey50]✗[/]",
-                  m["description"])
+                  m["description"] + src)
     console.print(t)
+    console.print("[grey50]↗ = contacts hosts other than the target (skip with --no-external)[/]")
+    for err in registry.plugin_errors():
+        console.print(f"[yellow]plugin skipped:[/] {err}")
     console.print(f"\n[grey50]{len(mods)} modules · "
                   f"{sum(1 for m in mods if m['category']=='active')} active, "
                   f"{sum(1 for m in mods if m['category']=='passive')} passive[/]")
+
+
+@cli.command()
+@click.argument("scan_id")
+@click.argument("server", type=click.Choice(list(fixes_mod.SERVERS)))
+@click.option("-o", "--output", default="", help="Write to a file instead of stdout.")
+def fixes(scan_id, server, output):
+    """Generate paste-ready fixes (nginx/apache/caddy/express/dns) for a scan's findings."""
+    result = asyncio.run(db.get_scan(scan_id))
+    if result is None:
+        console.print("[red]Scan not found.[/]"); sys.exit(1)
+    content = fixes_mod.generate(result, server)
+    if output:
+        with open(output, "w", encoding="utf-8") as f:
+            f.write(content)
+        console.print(f"[green]✓[/] written to [bold]{output}[/]")
+    else:
+        click.echo(content)
+
+
+@cli.command()
+@click.argument("host")
+@click.option("--check", is_flag=True, help="Look for the published proof now and record it if found.")
+def verify(host, check):
+    """Prove you control HOST (needed for active scans when FSV_REQUIRE_VERIFICATION=1)."""
+    from fsv.core import ownership
+    host = host.split("://", 1)[-1].split("/", 1)[0].lower()
+    secret = asyncio.run(db.get_install_secret())
+    info = ownership.instructions(host.split(":")[0], secret)
+    if not check:
+        console.print(Panel(
+            f"[bold]Prove you control[/] [cyan]{host}[/]\n\n"
+            f"[bold]Option 1 — DNS[/] (covers {info['dns']['covers']})\n"
+            f"  TXT  [green]{info['dns']['name']}[/]  =  [green]\"{info['dns']['value']}\"[/]\n\n"
+            f"[bold]Option 2 — HTTP[/] (covers {info['http']['covers']})\n"
+            f"  serve [green]{info['http']['url']}[/]\n  containing [green]{info['http']['body']}[/]\n\n"
+            f"Then run:  [bold]fsv verify {host} --check[/]",
+            title="Ownership verification", border_style="grey35", box=box.ROUNDED))
+        return
+    method = asyncio.run(ownership.check_proof(host.split(":")[0], secret, netloc=host))
+    if not method:
+        console.print("[red]✗ No proof found yet.[/] DNS changes can take a few minutes to propagate.")
+        sys.exit(1)
+    asyncio.run(db.add_verified(
+        ownership.verification_domain(host.split(":")[0]) if method == "dns" else host.split(":")[0], method))
+    console.print(f"[green]✓ Verified[/] [cyan]{host}[/] via {method.upper()} "
+                  f"(valid {ownership.VALID_DAYS} days).")
+
+
+@cli.command()
+def doctor():
+    """Check the environment: Python, dependencies, database, DNS, plugins."""
+    import importlib, platform, os
+    ok = lambda m: console.print(f"[green]✓[/] {m}")
+    bad = lambda m: console.print(f"[red]✗[/] {m}")
+    warn = lambda m: console.print(f"[yellow]![/] {m}")
+    console.print(f"[bold]FSV {__version__}[/] · Python {platform.python_version()} · {platform.system()}")
+    (ok if sys.version_info >= (3, 11) else bad)(f"Python ≥ 3.11 (have {platform.python_version()})")
+    for mod in ("aiohttp", "fastapi", "aiosqlite", "bs4", "lxml", "dns", "cryptography", "tldextract", "mcp"):
+        try:
+            importlib.import_module(mod); ok(f"import {mod}")
+        except Exception as exc:
+            bad(f"import {mod}: {exc}")
+    try:
+        asyncio.run(db.init_db()); ok(f"database writable: {db._db_path()}")
+    except Exception as exc:
+        bad(f"database: {exc}")
+    from fsv.core import dnsutil
+    a = dnsutil.resolve("example.com", "A", 3.0)
+    (ok if a.ok else warn)("DNS resolution works" if a.ok else
+                           f"DNS lookup of example.com returned '{a.status}' — DNS modules need working DNS")
+    from fsv.config import BLOCK_PRIVATE, API_TOKEN
+    ok(f"outbound policy: metadata/link-local always blocked; private ranges "
+       f"{'BLOCKED (FSV_BLOCK_PRIVATE)' if BLOCK_PRIVATE else 'allowed (set FSV_BLOCK_PRIVATE=1 for shared deployments)'}")
+    (ok if API_TOKEN else warn)("dashboard token set" if API_TOKEN else
+                                "FSV_TOKEN not set — fine on loopback, required if exposed")
+    errs = registry.plugin_errors()
+    ok(f"{len(registry.load_registry())} modules loaded")
+    for e in errs:
+        warn(f"plugin skipped: {e}")
 
 
 @cli.command()

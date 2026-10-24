@@ -495,3 +495,26 @@ footer b{color:var(--muted)}
   .hist-item .hc .dot:nth-child(n+4){display:none}
   .mod-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
 }
+
+/* v2.0 — attack paths, coverage warnings, external-module marker */
+.paths-card{display:none;padding:18px 22px;margin-top:16px;border-color:rgba(255,84,104,.35);
+  background:linear-gradient(180deg,rgba(255,84,104,.07),var(--glass))}
+.paths-card.show{display:block;animation:rise .5s var(--ease) both}
+.path{padding:14px 0;border-top:1px solid var(--stroke-soft)}
+.path:first-child{border-top:0;padding-top:4px}
+.path-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;font-size:14px}
+.path p{color:var(--muted);font-size:13px;margin:4px 0 8px}
+.path .steps{margin:0 0 10px 18px;font-size:12.5px;color:var(--text);display:grid;gap:3px}
+.path .links{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.path .breakit{font-size:12.5px;padding:9px 12px;border-radius:10px;background:rgba(48,196,141,.09);
+  border:1px solid rgba(48,196,141,.28);color:var(--text)}
+.path-tag{color:#ff8a98;border-color:rgba(255,84,104,.4)}
+.warnbar{display:none;margin-top:14px}
+.warnbar.show{display:block}
+.warn{padding:10px 14px;border-radius:12px;font-size:12.5px;margin-bottom:8px;
+  background:rgba(242,212,75,.09);border:1px solid rgba(242,212,75,.32);color:var(--text)}
+.warn code{font-family:var(--mono);font-size:11.5px}
+.mod .ext{font-style:normal;color:var(--faint);font-size:10px}
+select optgroup{font-style:normal;color:var(--muted)}
+
+.empty .small{white-space:pre-wrap;max-width:720px;margin:0 auto;text-align:left;font-family:var(--mono);font-size:12px}

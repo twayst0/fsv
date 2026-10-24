@@ -53,6 +53,9 @@ STACK_TRACE_SIGNATURES = [
 
 class InfoDisclosureScanner(BaseScanner):
     name = "info_disclosure"
+    category    = "passive"
+    scope       = "url"
+    description = "Leaked secrets, stack traces, internal IPs"
 
     async def scan(self, url: str) -> list[Finding]:
         status, headers, body = await self.fetch(url)

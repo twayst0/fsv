@@ -10,6 +10,9 @@ from fsv.config import XSS_PAYLOADS
 
 class XSSScanner(BaseScanner):
     name = "xss"
+    category    = "active"
+    scope       = "url"
+    description = "Reflected Cross-Site Scripting in URL parameters"
 
     async def scan(self, url: str) -> list[Finding]:
         parsed = urlparse(url)

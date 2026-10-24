@@ -1,6 +1,8 @@
 """FSV Module — Cookie Security Flags"""
 
 from __future__ import annotations
+from urllib.parse import urlparse
+
 from fsv.core.scanner import BaseScanner
 from fsv.core.models import Finding, Severity
 import re
@@ -14,6 +16,9 @@ _SENSITIVE_NAME = re.compile(
 
 class CookieScanner(BaseScanner):
     name = "cookies"
+    category    = "passive"
+    scope       = "url"
+    description = "Cookie flags (Secure, HttpOnly, SameSite)"
 
     async def scan(self, url: str) -> list[Finding]:
         resp = await self.fetch_response(url)
@@ -26,12 +31,15 @@ class CookieScanner(BaseScanner):
             parts  = [p.strip() for p in cookie_str.split(";")]
             name   = parts[0].split("=")[0].strip() if parts else "unknown"
             flags  = {p.lower().split("=")[0].strip() for p in parts[1:]}
+            # attribute → value ("samesite" → "none"); `flags` alone loses the value
+            attrs  = {p.split("=", 1)[0].strip().lower(): (p.split("=", 1)[1].strip() if "=" in p else "")
+                      for p in parts[1:]}
 
             is_secure_name = bool(_SENSITIVE_NAME.search(name))
 
             # Missing Secure flag
             if "secure" not in flags:
-                sev = Severity.HIGH if is_secure_name else Severity.MEDIUM
+                sev = Severity.HIGH if is_secure_name else Severity.LOW
                 findings.append(Finding(
                     title       = f"Cookie Missing Secure Flag: `{name}`",
                     severity    = sev,
@@ -48,12 +56,13 @@ class CookieScanner(BaseScanner):
                         "https://owasp.org/www-community/controls/SecureCookieAttribute",
                     ],
                     cwe         = "CWE-614",
+                    extra       = {"cookie": name, "session_like": is_secure_name, "flag": "secure"},
                     cvss_score  = 5.9,
                 ))
 
             # Missing HttpOnly flag
             if "httponly" not in flags:
-                sev = Severity.HIGH if is_secure_name else Severity.MEDIUM
+                sev = Severity.HIGH if is_secure_name else Severity.LOW
                 findings.append(Finding(
                     title       = f"Cookie Missing HttpOnly Flag: `{name}`",
                     severity    = sev,
@@ -70,6 +79,7 @@ class CookieScanner(BaseScanner):
                         "https://owasp.org/www-community/HttpOnly",
                     ],
                     cwe         = "CWE-1004",
+                    extra       = {"cookie": name, "session_like": is_secure_name, "flag": "httponly"},
                     cvss_score  = 5.4,
                 ))
 
@@ -91,12 +101,11 @@ class CookieScanner(BaseScanner):
                         "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite",
                     ],
                     cwe         = "CWE-1275",
+                    extra       = {"cookie": name, "session_like": is_secure_name, "flag": "samesite"},
                 ))
 
             # SameSite=None without Secure (invalid and insecure)
-            samesite_none = any(
-                "samesite=none" in f for f in flags
-            )
+            samesite_none = attrs.get("samesite", "").lower() == "none"
             if samesite_none and "secure" not in flags:
                 findings.append(Finding(
                     title       = f"Cookie SameSite=None Without Secure: `{name}`",
@@ -111,6 +120,31 @@ class CookieScanner(BaseScanner):
                     recommendation = "Add the Secure flag when using SameSite=None.",
                     references  = [],
                     cwe         = "CWE-614",
+                    extra       = {"cookie": name, "session_like": is_secure_name, "flag": "samesite_none"},
                 ))
+
+            # Cookie scoped to the parent domain → shared with EVERY subdomain
+            dom = attrs.get("domain", "").lstrip(".").lower()
+            if dom and is_secure_name:
+                host = (urlparse(url).hostname or "").lower()
+                if host != dom and host.endswith("." + dom) or host == dom:
+                    findings.append(Finding(
+                        title       = f"Session Cookie Shared With All Subdomains: `{name}`",
+                        severity    = Severity.LOW,
+                        url         = url,
+                        module      = self.name,
+                        description = (
+                            f"`{name}` is set with Domain={dom}, so the browser sends it to every "
+                            f"subdomain of {dom} — including forgotten, third-party-hosted or "
+                            "compromised ones. Any one weak subdomain (an XSS, or a takeover of a "
+                            "dangling record) can then read, overwrite or fixate this session."),
+                        evidence    = f"Set-Cookie: {cookie_str[:200]}",
+                        recommendation = (
+                            "Omit the Domain attribute so the cookie is host-only, or use the "
+                            "`__Host-` prefix (requires Secure, Path=/, no Domain)."),
+                        references  = ["https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes"],
+                        cwe         = "CWE-565",
+                        extra       = {"cookie": name, "session_like": True, "flag": "domain", "domain": dom},
+                    ))
 
         return findings

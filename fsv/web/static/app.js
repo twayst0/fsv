@@ -36,7 +36,7 @@ const SEV_COLOR = { critical: "var(--crit)", high: "var(--high)", medium: "var(-
 const GRADE_COLOR = { "A+": "var(--low)", "A": "var(--low)", "B": "var(--med)", "C": "var(--high)", "D": "var(--high)", "F": "var(--crit)" };
 const STATUS_LABELS = {
   open: "Open", confirmed: "Confirmed", false_positive: "False positive",
-  accepted_risk: "Accepted risk", fixed: "Fixed",
+  accepted_risk: "Accepted risk", fixed: "Fixed", superseded: "Chain broken",
 };
 
 /* ── theme ── */
@@ -67,7 +67,7 @@ function buildModuleGrid() {
   grid.innerHTML = MODULES.map(m => `
     <label class="mod ${m.category}" title="${esc(m.description)}">
       <input type="checkbox" data-mod="${m.name}" data-cat="${m.category}" checked>
-      <span class="mod-name">${esc(m.name)}</span>
+      <span class="mod-name">${esc(m.name)}${m.external ? ' <i class="ext" title="contacts hosts other than the target">↗</i>' : ""}</span>
       <span class="mod-cat">${m.category === "active" ? "active" : "passive"}</span>
     </label>`).join("");
   grid.querySelectorAll("input").forEach(i => i.onchange = updateModCount);
@@ -144,6 +144,7 @@ async function startScan() {
   $("progressCard").classList.add("show");
   $("overview").classList.remove("show");
   $("owaspCard").classList.remove("show");
+  $("pathsCard").classList.remove("show"); $("warnBar").classList.remove("show");
   $("resultsSection").classList.add("hidden");
   $("emptyState").classList.remove("show");
   $("findings").innerHTML = ""; allFindings = []; activeSev = null; searchTerm = "";
@@ -160,6 +161,8 @@ async function startScan() {
     tags: $("tags").value.split(",").map(s => s.trim()).filter(Boolean),
     respect_robots: $("robots").checked,
     max_duration: parseInt($("maxDuration").value),
+    use_ct_logs: $("ctlogs").checked,
+    allow_external: $("external").checked,
     headers: parseLines($("hdrs").value, ":"),
     cookies: parseLines($("cookies").value, "="),
     authorized: true,
@@ -287,6 +290,8 @@ function renderResult(d) {
   $("ovTarget").textContent = (d.target || "").replace(/^https?:\/\//, "");
   $("ovTech").innerHTML = (d.tech_stack || []).map(t => `<span class="tag">${esc(t)}</span>`).join("");
 
+  renderWarnings(d);
+  renderPaths((d.findings || []).filter(f => f.module === "correlation" && (f.status === "open" || f.status === "confirmed")));
   renderOwasp(d.owasp || {}, c.total || 0);
   loadSparkline(d.target);
   loadDelta(d.scan_id);
@@ -317,8 +322,43 @@ function updateDownloadLink() {
   const fmt = $("dlFmt").value;
   const a = $("dlBtn");
   a.href = withToken(`/api/scan/${currentScanId}/report?format=${fmt}`);
-  a.textContent = `↓ ${fmt.toUpperCase()}`;
-  a.download = `fsv-report.${fmt}`;
+  a.textContent = fmt.startsWith("fix-") ? `↓ ${fmt.slice(4)} fixes` : `↓ ${fmt.toUpperCase()}`;
+  a.download = `fsv-${fmt}.${fmt.startsWith("fix-") ? "md" : fmt}`;
+}
+
+/* ── coverage warnings ── */
+function renderWarnings(d) {
+  const w = [];
+  const errs = d.module_errors || {}, samples = d.module_error_samples || {};
+  const names = Object.keys(errs);
+  if (names.length)
+    w.push(`<b>${names.length} module${names.length > 1 ? "s" : ""} had errors</b> — results may be incomplete: ` +
+      names.map(n => `<code>${esc(n)}</code>${samples[n] ? ` <span class="muted">(${esc(samples[n].slice(0, 120))})</span>` : ""}`).join(", "));
+  if (d.error && d.status !== "failed") w.push(esc(d.error));
+  $("warnBar").innerHTML = w.map(x => `<div class="warn">⚠ ${x}</div>`).join("");
+  $("warnBar").classList.toggle("show", w.length > 0);
+}
+
+/* ── attack paths (correlated findings) ── */
+function renderPaths(list) {
+  const card = $("pathsCard");
+  if (!list.length) { card.classList.remove("show"); return; }
+  card.classList.add("show");
+  $("pathsSummary").textContent = `${list.length} chain${list.length > 1 ? "s" : ""} of findings that are worse together`;
+  $("pathsList").innerHTML = list.map(f => {
+    const parts = (f.description || "").split("\n\n");
+    const story = parts[0] || "";
+    const steps = ((parts.find(p => p.startsWith("How it plays out:")) || "").split("\n").slice(1)).filter(Boolean);
+    const links = ((f.extra || {}).links || []).map(l => `<span class="tag">${esc(l.title)}</span>`).join("");
+    return `<div class="path">
+      <div class="path-head"><span class="sev ${f.severity}">${f.severity}</span><b>${esc(f.title.replace(/^Attack Path:\s*/, ""))}</b>
+        <span class="tag conf-${f.confidence}">${f.confidence}</span></div>
+      <p>${esc(story)}</p>
+      <ol class="steps">${steps.map(x => `<li>${esc(x.replace(/^\d+\.\s*/, ""))}</li>`).join("")}</ol>
+      <div class="links">${links}</div>
+      <div class="breakit"><b>Break the chain:</b> ${esc(f.recommendation)}</div>
+    </div>`;
+  }).join("");
 }
 
 /* ── OWASP breakdown ── */
@@ -409,7 +449,8 @@ function renderFinding(f, i = 0) {
   if (f.owasp) tags.push(f.owasp); if (f.cwe) tags.push(f.cwe);
   if (f.cvss_score != null) tags.push("CVSS " + f.cvss_score);
   if (f.parameter) tags.push("param: " + f.parameter);
-  const conf = f.confidence ? `<span class="tag conf-${f.confidence}">${f.confidence}</span>` : "";
+  const conf = (f.module === "correlation" ? '<span class="tag path-tag">attack path</span>' : "") +
+    (f.confidence ? `<span class="tag conf-${f.confidence}">${f.confidence}</span>` : "");
   const affected = (f.affected_urls && f.affected_urls.length > 1)
     ? `<h4>Affected URLs (${f.affected_urls.length})</h4><pre>${esc(f.affected_urls.slice(0, 60).join("\n"))}${f.affected_urls.length > 60 ? "\n…" : ""}</pre>` : "";
   const statusBadge = (f.status && f.status !== "open")

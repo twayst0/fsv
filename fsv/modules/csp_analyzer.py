@@ -30,6 +30,7 @@ class CSPAnalyzerScanner(BaseScanner):
     name     = "csp_analyzer"
     category = "passive"
     scope    = "url"
+    description = "Deep Content-Security-Policy review (directives, sources, reporting)"
 
     async def scan(self, url: str) -> list[Finding]:
         status, headers, _ = await self.fetch(url)

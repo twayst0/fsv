@@ -19,7 +19,7 @@ from mcp.server.mcpserver import MCPServer
 
 from fsv import __version__
 from fsv.core.models import ScanConfig, ScanProfile, FindingStatus, normalize_target
-from fsv.core import engine, database as db, registry
+from fsv.core import engine, database as db, registry, fixes as fixes_mod
 from fsv.core import report as report_mod
 from fsv.core.diff import compare
 
@@ -34,8 +34,12 @@ mcp = MCPServer(
         "first look; use profile='balanced' or 'aggressive' only with clear "
         "authorization. Every finding carries a severity, CWE, OWASP category, "
         "confidence and remediation — summarize those for the user, don't produce "
-        "exploits. Use fsv_triage to record false positives/accepted risks (they "
-        "persist per host), and fsv_compare_scans to show progress after a fix."
+        "exploits. Findings with module 'correlation' are ATTACK PATHS — combinations of "
+        "smaller findings that together are worse than each alone; lead with those and "
+        "with the single fix that breaks the chain. Use fsv_fixes to turn findings into "
+        "paste-ready nginx/apache/caddy/express/DNS config, fsv_triage to record false "
+        "positives/accepted risks (they persist per host), and fsv_compare_scans to show "
+        "progress after a fix."
     ),
 )
 
@@ -69,7 +73,13 @@ def _findings_payload(result) -> dict:
             }
             for f in result.findings
         ],
+        "attack_paths": [
+            {"title": f.title, "severity": f.severity.value, "how": f.description,
+             "break_the_chain": f.recommendation, "links": f.extra.get("links", [])}
+            for f in result.active_findings if f.module == "correlation"
+        ],
         "hint": f"fsv_get_report(scan_id='{result.scan_id}') for a formatted report; "
+                f"fsv_fixes(scan_id, 'nginx'|'apache'|'caddy'|'express'|'dns') for paste-ready fixes; "
                 f"fsv_triage(...) to suppress false positives.",
     }
     if result.error:
@@ -105,6 +115,9 @@ def _validate(target: str) -> tuple[str | None, str | None]:
         "host-header); 'aggressive' is the same modules at higher rate/concurrency. Returns "
         "findings grouped with severity, CWE, OWASP category, confidence and remediation. "
         "Time-boxed by max_minutes (default 20; partial results are kept). "
+        "use_ct_logs=true also asks Certificate Transparency logs (crt.sh) for subdomains "
+        "(sends the domain to a third party — only with the user's consent); "
+        "allow_external=false skips modules that contact hosts other than the target. "
         "Only scan targets the user owns or is authorized to test; pass authorized=true only "
         "after they confirm."
     )
@@ -119,6 +132,8 @@ async def fsv_scan(
     modules: list[str] | None = None,
     exclude_paths: list[str] | None = None,
     max_minutes: int = 20,
+    use_ct_logs: bool = False,
+    allow_external: bool = True,
 ) -> str:
     """Full vulnerability scan with selectable profile (time-boxed, default 20 min)."""
     if not authorized:
@@ -135,6 +150,7 @@ async def fsv_scan(
         max_urls=max_urls, depth=depth, profile=prof,
         exclude_paths=list(exclude_paths or []),
         max_duration=max(0, max_minutes) * 60,
+        use_ct_logs=use_ct_logs, allow_external=allow_external,
     )
     result = await engine.run_scan(config)
     return _dump(_findings_payload(result))
@@ -183,7 +199,7 @@ async def fsv_waf_check(target: str, authorized: bool) -> str:
 
 @mcp.tool(description=(
     "Get a formatted report for a completed scan. format: 'md' (default, OWASP-grouped), "
-    "'json', 'html' (self-contained), 'sarif' (for CI/code-scanning), or 'csv'."))
+    "'json', 'html' (self-contained), 'sarif' (for CI/code-scanning), 'csv', or 'fix-nginx' / 'fix-apache' / 'fix-caddy' / 'fix-express' / 'fix-dns'."))
 async def fsv_get_report(scan_id: str, format: str = "md") -> str:
     """Formatted report in the requested format."""
     result = await db.get_scan(scan_id)
@@ -240,14 +256,32 @@ async def fsv_triage(scan_id: str, finding: str, status: str, note: str = "") ->
         return _dump({"error": f"no finding '{finding}' in scan {scan_id}"})
     try:
         st = FindingStatus(status)
+        if st not in FindingStatus.user_settable():
+            raise ValueError
     except ValueError:
         return _dump({"error": f"invalid status '{status}'",
-                      "valid": [s.value for s in FindingStatus]})
+                      "valid": [s.value for s in FindingStatus.user_settable()]})
     f = match[0]
     host = db.host_of(result.target)
     await db.set_triage(host, f.fingerprint, st, note)
     return _dump({"ok": True, "finding": f.title, "status": st.value, "host": host,
                   "note": note})
+
+
+@mcp.tool(description=(
+    "Turn a scan's findings into paste-ready remediation for one platform: 'nginx', 'apache', "
+    "'caddy', 'express' (helmet/cookies) or 'dns' (SPF/DMARC/CAA records, dangling-record removal). "
+    "Only issues actually found produce a snippet; CSP is emitted report-only. Show the user the "
+    "snippets and remind them to test on staging."))
+async def fsv_fixes(scan_id: str, server: str) -> str:
+    """Generated fix pack (Markdown with code blocks)."""
+    result = await db.get_scan(scan_id)
+    if result is None:
+        return _dump({"error": "scan not found"})
+    try:
+        return fixes_mod.generate(result, server)
+    except ValueError as exc:
+        return _dump({"error": str(exc), "valid": list(fixes_mod.SERVERS)})
 
 
 @mcp.tool(description=(

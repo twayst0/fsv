@@ -46,6 +46,8 @@ PATH_SEVERITY: dict[str, Severity] = {
     "/crossdomain.xml":    Severity.INFO,
 }
 
+PATH_CWE: dict[str, str] = {}
+
 PATH_DESCRIPTIONS: dict[str, str] = {
     "/.git/HEAD":        "Exposed .git directory allows full source code download including credentials.",
     "/.env":             "Exposed .env file may contain database credentials, API keys, and secret keys.",
@@ -62,6 +64,9 @@ PATH_DESCRIPTIONS: dict[str, str] = {
 
 class PathScanner(BaseScanner):
     name = "paths"
+    category    = "passive"
+    scope       = "site"
+    description = "Exposed sensitive files (.git, .env, backups, admin) w/ calibration"
 
     async def scan(self, url: str) -> list[Finding]:
         parsed   = urlparse(url)
@@ -77,7 +82,7 @@ class PathScanner(BaseScanner):
         batch_size = 15
         findings: list[Finding] = []
 
-        paths_list = list(SENSITIVE_PATHS)
+        paths_list = list(ALL_PATHS)
         for i in range(0, len(paths_list), batch_size):
             batch   = paths_list[i: i + batch_size]
             tasks   = [self._probe(base_url, path, baseline) for path in batch]
@@ -157,7 +162,7 @@ class PathScanner(BaseScanner):
             references  = [
                 "https://owasp.org/www-project-web-security-testing-guide/",
             ],
-            cwe         = "CWE-538" if ".git" in path or ".env" in path else "CWE-200",
+            cwe         = PATH_CWE.get(path) or ("CWE-538" if ".git" in path or ".env" in path else "CWE-200"),
         )
 
 
@@ -225,9 +230,17 @@ VALIDATORS: dict[str, Callable[[str, str], bool]] = {
     "/.well-known/security.txt": _regex(r"^\s*contact\s*:"),
 }
 
-_SECRET_FILES = ("/.env", "/.env.local", "/.env.production", "/.aws/credentials",
-                 "/.htpasswd", "/config.php", "/wp-config.php", "/id_rsa")
+_BINARY_FILES = ("/actuator/heapdump", "/backup.zip", "/backup.tar.gz", "/backup.tgz", "/site.zip",
+                 "/www.zip", "/web.zip", "/public_html.zip", "/.DS_Store", "/.svn/wc.db")
+_SECRET_FILES = ("/.env", "/.env.local", "/.env.production", "/.env.bak", "/.env.backup",
+                 "/.aws/credentials", "/.htpasswd", "/config.php", "/wp-config.php",
+                 "/wp-config.php.bak", "/wp-config.php~", "/wp-config.php.old", "/config.php.bak",
+                 "/id_rsa", "/.ssh/id_rsa", "/.npmrc", "/.docker/config.json", "/appsettings.json",
+                 "/appsettings.Development.json", "/application.properties", "/application.yml",
+                 "/config/database.yml", "/settings.py", "/terraform.tfvars", "/terraform.tfstate",
+                 "/actuator/env", "/actuator/configprops", "/actuator/httptrace")
 _KV = re.compile(r"^(\s*[\w.\-]+\s*[=:]\s*)(.+)$")
+_JSON_SECRET = re.compile(r'(?i)("[^"\n]*(?:pass|secret|token|key|auth|credential|connection)[^"\n]*"\s*:\s*)"[^"\n]*"')
 _PHP_DEFINE = re.compile(r"(define\s*\(\s*['\"][^'\"]+['\"]\s*,\s*)(['\"]).*?\2", re.IGNORECASE)
 
 
@@ -236,17 +249,135 @@ def redact_preview(path: str, body: str, limit: int = 300) -> str:
     Preview of the exposed file for the report. For files that hold secrets the
     keys stay visible (that is the evidence) but every value is masked, so the
     scan report itself never becomes a second copy of the leaked credentials.
+    Binary / archive files get no preview at all.
     """
-    if path == "/id_rsa":
+    if path in ("/id_rsa", "/.ssh/id_rsa"):
         return "-----BEGIN … PRIVATE KEY----- (contents withheld)"
+    if path in _BINARY_FILES:
+        return f"(binary content withheld; {len(body)} bytes received)"
     preview = body[:limit]
     if path not in _SECRET_FILES:
         return preview
     out = []
     for line in preview.splitlines():
+        line = _JSON_SECRET.sub(lambda m: m.group(1) + '"****"', line)
         line = _PHP_DEFINE.sub(lambda m: m.group(1) + "'****'", line)
         m = _KV.match(line)
-        if m and not line.lstrip().startswith(("#", "//", "<?")):
+        if m and "****" not in line and not line.lstrip().startswith(("#", "//", "<?", "{", "}", "[", '"')):
             line = m.group(1) + "****"
         out.append(line)
     return "\n".join(out)
+
+
+# ── extended checks (every one content-validated) ─────────────────────────────
+
+def _json_list_with(key: str):
+    def check(body: str, ctype: str) -> bool:
+        try:
+            data = json.loads(body)
+        except ValueError:
+            return False
+        return isinstance(data, list) and bool(data) and isinstance(data[0], dict) and key in data[0]
+    return check
+
+
+_PHP_SRC = _regex(r"(<\?php|DB_PASSWORD|define\s*\()", html_ok=True)
+_PRIVKEY = _regex(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")
+_PHPINFO = _regex(r"(phpinfo\(\)|PHP Version\s*[0-9])", html_ok=True)
+_ZIP = lambda b, c: b.startswith("PK\x03\x04")
+_GZIP = lambda b, c: b[:1] == "\x1f" and b[1:2] == "\ufffd"
+_SWAGGER = _json_with("swagger", "openapi")
+
+S, V = Severity, None
+# (path, severity, validator, description, cwe)
+_EXTRA_CHECKS: list[tuple] = [
+    ("/.git/config", S.HIGH, _regex(r"^\s*\[(core|remote|branch)\b"),
+     "Exposed git configuration: reveals the repository URL (often with embedded credentials) and confirms the .git directory is downloadable.", "CWE-538"),
+    ("/.svn/wc.db", S.CRITICAL, lambda b, c: b.startswith("SQLite format 3"),
+     "Exposed Subversion working-copy database: lists every file in the repository and lets the source be reconstructed.", "CWE-538"),
+    ("/.npmrc", S.HIGH, _regex(r"(_authToken\s*=|_auth\s*=|^\s*registry\s*=)"),
+     "Exposed npm configuration: frequently contains a publish token for the organisation's registry.", "CWE-538"),
+    ("/.docker/config.json", S.CRITICAL, _json_with("auths"),
+     "Exposed Docker client config: contains registry credentials.", "CWE-538"),
+    ("/.ssh/id_rsa", S.CRITICAL, _PRIVKEY, "Exposed SSH private key.", "CWE-538"),
+    ("/appsettings.json", S.HIGH, _json_with("ConnectionStrings", "Logging", "AllowedHosts", "Jwt", "AzureAd"),
+     "Exposed ASP.NET configuration: typically holds database connection strings and signing keys.", "CWE-538"),
+    ("/appsettings.Development.json", S.HIGH, _json_with("ConnectionStrings", "Logging", "AllowedHosts", "Jwt"),
+     "Exposed ASP.NET development configuration.", "CWE-538"),
+    ("/application.properties", S.HIGH, _regex(r"^\s*(spring|server|logging)\.[\w.\-]+\s*="),
+     "Exposed Spring Boot configuration: usually contains datasource credentials.", "CWE-538"),
+    ("/application.yml", S.HIGH, _regex(r"^\s*(spring|server|logging)\s*:"),
+     "Exposed Spring Boot configuration.", "CWE-538"),
+    ("/config/database.yml", S.HIGH, _regex(r"^\s*(adapter|database|username|password)\s*:"),
+     "Exposed Rails database configuration.", "CWE-538"),
+    ("/settings.py", S.HIGH, _regex(r"(SECRET_KEY\s*=|INSTALLED_APPS\s*=)"),
+     "Exposed Django settings: SECRET_KEY allows forging sessions and, with some serializers, code execution.", "CWE-538"),
+    ("/wp-config.php.bak", S.CRITICAL, _PHP_SRC, "Backup of wp-config.php served as plain text: database credentials and salts.", "CWE-538"),
+    ("/wp-config.php~", S.CRITICAL, _PHP_SRC, "Editor backup of wp-config.php served as plain text.", "CWE-538"),
+    ("/wp-config.php.old", S.CRITICAL, _PHP_SRC, "Old copy of wp-config.php served as plain text.", "CWE-538"),
+    ("/config.php.bak", S.CRITICAL, _PHP_SRC, "Backup of config.php served as plain text.", "CWE-538"),
+    ("/.env.bak", S.CRITICAL, _ENV, "Backup of the environment file: credentials and API keys.", "CWE-538"),
+    ("/.env.backup", S.CRITICAL, _ENV, "Backup of the environment file: credentials and API keys.", "CWE-538"),
+    ("/terraform.tfstate", S.CRITICAL, _json_with("terraform_version", "resources"),
+     "Exposed Terraform state: contains the full infrastructure inventory and, in clear text, every secret the configuration touched.", "CWE-538"),
+    ("/terraform.tfvars", S.HIGH, _regex(r'^\s*\w+\s*=\s*"'), "Exposed Terraform variables: often credentials and account identifiers.", "CWE-538"),
+    ("/actuator", S.MEDIUM, _json_with("_links"), "Spring Boot Actuator index is public: it lists every management endpoint that is enabled.", "CWE-200"),
+    ("/actuator/env", S.HIGH, _json_with("propertySources", "activeProfiles"),
+     "Spring Boot Actuator /env is public: exposes configuration properties (older versions show secrets unmasked).", "CWE-200"),
+    ("/actuator/heapdump", S.CRITICAL, lambda b, c: b.startswith("JAVA PROFILE"),
+     "Spring Boot Actuator /heapdump is public: a full JVM memory dump — session tokens, credentials and personal data in clear text.", "CWE-200"),
+    ("/actuator/configprops", S.HIGH, _json_with("contexts", "beans"), "Spring Boot Actuator /configprops is public.", "CWE-200"),
+    ("/actuator/mappings", S.MEDIUM, _json_with("contexts"), "Spring Boot Actuator /mappings is public: lists every route, including hidden ones.", "CWE-200"),
+    ("/actuator/httptrace", S.HIGH, _json_with("traces"), "Spring Boot Actuator /httptrace is public: recent requests including headers and cookies.", "CWE-200"),
+    ("/metrics", S.MEDIUM, _regex(r"^# (HELP|TYPE) ", html_ok=False),
+     "Prometheus metrics are public: internal topology, endpoints, versions and traffic volumes.", "CWE-200"),
+    ("/debug/pprof/", S.HIGH, _regex(r"(Types of profiles available|/debug/pprof/)", html_ok=True),
+     "Go pprof profiling endpoint is public: memory/CPU profiles can leak data and are an easy denial-of-service vector.", "CWE-489"),
+    ("/debug/vars", S.MEDIUM, _json_with("cmdline", "memstats"), "Go expvar is public: command line and memory statistics.", "CWE-489"),
+    ("/_profiler/", S.HIGH, _regex(r"Symfony Profiler", html_ok=True),
+     "Symfony profiler is public: request/response data, configuration and database queries of other users.", "CWE-489"),
+    ("/telescope", S.HIGH, _regex(r"Laravel Telescope", html_ok=True),
+     "Laravel Telescope is public: every request, query, exception and job of the application.", "CWE-489"),
+    ("/storage/logs/laravel.log", S.HIGH, _regex(r"\[\d{4}-\d\d-\d\d[ T][\d:]+\]\s+\w+\.(ERROR|WARNING|INFO|DEBUG)"),
+     "Laravel application log is public: stack traces, paths and sometimes credentials and tokens.", "CWE-532"),
+    ("/elmah.axd", S.HIGH, _regex(r"Error Log for", html_ok=True), "ELMAH error log is public.", "CWE-532"),
+    ("/trace.axd", S.HIGH, _regex(r"Application Trace", html_ok=True), "ASP.NET trace viewer is public: request data of other users.", "CWE-489"),
+    ("/phpmyadmin/", S.MEDIUM, _regex(r"phpMyAdmin", html_ok=True), "phpMyAdmin is reachable from the Internet.", "CWE-284"),
+    ("/pma/", S.MEDIUM, _regex(r"phpMyAdmin", html_ok=True), "phpMyAdmin is reachable from the Internet.", "CWE-284"),
+    ("/adminer.php", S.MEDIUM, _regex(r"Adminer", html_ok=True), "Adminer database client is reachable from the Internet.", "CWE-284"),
+    ("/_cluster/health", S.HIGH, _json_with("cluster_name", "status"),
+     "An Elasticsearch API answers without authentication — the data and cluster controls are likely open.", "CWE-306"),
+    ("/wp-json/wp/v2/users", S.LOW, _json_list_with("slug"),
+     "WordPress REST API lists user accounts (login names), which helps credential-stuffing and phishing.", "CWE-200"),
+    ("/xmlrpc.php", S.LOW, _regex(r"XML-RPC server accepts POST requests only", html_ok=True),
+     "WordPress XML-RPC is enabled: used for password-guessing amplification (system.multicall) and pingback abuse.", "CWE-307"),
+    ("/wp-content/debug.log", S.HIGH, _regex(r"(PHP (Warning|Notice|Fatal error|Deprecated)|^\[\d\d-\w{3}-\d{4})"),
+     "WordPress debug log is public: file paths, errors and sometimes secrets.", "CWE-532"),
+    ("/WEB-INF/web.xml", S.HIGH, _regex(r"<web-app", html_ok=True), "Java deployment descriptor is downloadable: reveals servlets, filters and security constraints.", "CWE-538"),
+    ("/info.php", S.HIGH, _PHPINFO, "phpinfo() page: full PHP/server configuration and environment variables.", "CWE-200"),
+    ("/test.php", S.HIGH, _PHPINFO, "phpinfo() page: full PHP/server configuration and environment variables.", "CWE-200"),
+    ("/backup.tar.gz", S.HIGH, _GZIP, "Downloadable site backup archive.", "CWE-530"),
+    ("/backup.tgz", S.HIGH, _GZIP, "Downloadable site backup archive.", "CWE-530"),
+    ("/site.zip", S.HIGH, _ZIP, "Downloadable site archive.", "CWE-530"),
+    ("/www.zip", S.HIGH, _ZIP, "Downloadable site archive.", "CWE-530"),
+    ("/web.zip", S.HIGH, _ZIP, "Downloadable site archive.", "CWE-530"),
+    ("/public_html.zip", S.HIGH, _ZIP, "Downloadable site archive.", "CWE-530"),
+    ("/v2/api-docs", S.MEDIUM, _SWAGGER, "Swagger/OpenAPI document is public: every endpoint and parameter.", "CWE-200"),
+    ("/v3/api-docs", S.MEDIUM, _SWAGGER, "OpenAPI document is public: every endpoint and parameter.", "CWE-200"),
+    ("/swagger-ui.html", S.LOW, _regex(r"Swagger UI", html_ok=True), "Swagger UI is public.", "CWE-200"),
+    ("/swagger-ui/index.html", S.LOW, _regex(r"Swagger UI", html_ok=True), "Swagger UI is public.", "CWE-200"),
+    ("/composer.lock", S.LOW, _json_with("packages"), "Exposed PHP dependency lock file: exact versions for targeting known CVEs.", "CWE-200"),
+    ("/.gitlab-ci.yml", S.LOW, _regex(r"^\s*(stages|script|image)\s*:"), "Exposed CI pipeline: internal hosts, deployment targets and secret variable names.", "CWE-200"),
+    ("/Jenkinsfile", S.LOW, _regex(r"\b(pipeline|node)\s*\{"), "Exposed Jenkins pipeline definition.", "CWE-200"),
+    ("/.idea/workspace.xml", S.LOW, _regex(r"<project version=", html_ok=True), "Exposed IDE workspace: local paths and project structure.", "CWE-200"),
+    ("/nginx_status", S.LOW, _regex(r"Active connections:", html_ok=False), "nginx stub_status is public.", "CWE-200"),
+]
+
+# merge into the lookup tables used by _probe
+for _path, _sev, _val, _desc, _cwe in _EXTRA_CHECKS:
+    PATH_SEVERITY[_path] = _sev
+    PATH_DESCRIPTIONS[_path] = _desc
+    VALIDATORS[_path] = _val
+    PATH_CWE[_path] = _cwe
+
+ALL_PATHS: list[str] = list(dict.fromkeys([*SENSITIVE_PATHS, *(c[0] for c in _EXTRA_CHECKS)]))
