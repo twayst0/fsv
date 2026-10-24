@@ -9,8 +9,10 @@ Tables
 
 from __future__ import annotations
 import json
+import asyncio
 import os
 import sqlite3
+import weakref
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
@@ -33,6 +35,18 @@ _SCAN_COLUMNS_V2 = [
 ]
 
 _initialized: set[str] = set()
+# one init lock per event loop (asyncio locks are loop-bound; tests and CLI
+# commands each run their own loop)
+_init_locks: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock]" = \
+    weakref.WeakKeyDictionary()
+
+
+def _init_lock() -> asyncio.Lock:
+    loop = asyncio.get_running_loop()
+    lock = _init_locks.get(loop)
+    if lock is None:
+        lock = _init_locks[loop] = asyncio.Lock()
+    return lock
 
 
 def _db_path() -> str:
@@ -55,8 +69,25 @@ async def init_db() -> None:
     path = _db_path()
     if path in _initialized:
         return
+    # Serialize first-time setup in this process: concurrent callers (web
+    # startup + first requests, gathered scans) used to race on the WAL switch
+    # and the ALTER TABLE migration. Other processes are handled below.
+    async with _init_lock():
+        if path in _initialized:
+            return
+        await _init_schema()
+        _initialized.add(path)
+
+
+async def _init_schema() -> None:
     async with _connect() as db:
-        await db.execute("PRAGMA journal_mode=WAL")
+        try:
+            await db.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.OperationalError as exc:
+            # another process holds the lock while switching modes; WAL is an
+            # optimisation, not a requirement — carry on in its current mode
+            if "locked" not in str(exc).lower():
+                raise
         await db.execute("""
             CREATE TABLE IF NOT EXISTS scans (
                 scan_id     TEXT PRIMARY KEY,
@@ -97,7 +128,6 @@ async def init_db() -> None:
         """)
         await db.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
         await db.commit()
-    _initialized.add(path)
 
 
 async def upsert_scan(result: ScanResult, config_raw: dict | None = None) -> None:
