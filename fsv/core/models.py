@@ -131,6 +131,7 @@ _LIMITS = {
     "depth":        (0, 6),
     "threads":      (1, 64),
     "max_retries":  (0, 5),
+    "max_duration": (0, 86_400),
 }
 
 
@@ -151,6 +152,7 @@ class ScanConfig(BaseModel):
     max_retries:  int        = 2
     rotate_ua:    bool       = False
     respect_robots: bool     = False
+    max_duration: int        = 0                         # seconds; 0 = no limit
     exclude_paths: list[str] = Field(default_factory=list)   # glob patterns, e.g. "/admin/*"
     seed_urls:    list[str]  = Field(default_factory=list)   # extra same-origin entry points
     tags:         list[str]  = Field(default_factory=list)   # free-form labels for history
@@ -160,7 +162,7 @@ class ScanConfig(BaseModel):
     def _normalize_target(cls, v: str) -> str:
         return normalize_target(v)
 
-    @field_validator("max_urls", "timeout", "depth", "threads", "max_retries")
+    @field_validator("max_urls", "timeout", "depth", "threads", "max_retries", "max_duration")
     @classmethod
     def _clamp(cls, v: int, info) -> int:
         lo, hi = _LIMITS[info.field_name]

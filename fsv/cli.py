@@ -56,12 +56,13 @@ def cli(ctx):
 @click.option("--cookie", "cookies", multiple=True, help="Request cookie 'name=value' (repeatable).")
 @click.option("--tag", "tags", multiple=True, help="Label this scan (repeatable).")
 @click.option("--robots", is_flag=True, help="Respect robots.txt disallow rules.")
+@click.option("--max-time", default=0, help="Stop after N seconds and keep partial results (0 = no limit).")
 @click.option("-o", "--output", default="", help="Write report to file (.md/.json/.html/.sarif/.csv).")
 @click.option("--fail-on", type=click.Choice(["critical", "high", "medium", "low", "info"]),
               default=None, help="Exit non-zero if a finding of this severity or worse exists (CI gate).")
 @click.option("--quiet", is_flag=True, help="Suppress live progress.")
 def scan(target, authorize, profile, no_crawl, max_urls, depth, threads, timeout, rate,
-         modules, exclude, headers, cookies, tags, robots, output, fail_on, quiet):
+         modules, exclude, headers, cookies, tags, robots, max_time, output, fail_on, quiet):
     """Run a vulnerability scan against TARGET."""
     if not authorize:
         console.print(Panel(
@@ -85,7 +86,7 @@ def scan(target, authorize, profile, no_crawl, max_urls, depth, threads, timeout
         threads=threads, rate_per_sec=rate, profile=ScanProfile(profile),
         exclude_paths=[p.strip() for p in exclude.split(",") if p.strip()],
         headers=_parse_kv(headers, ":"), cookies=_parse_kv(cookies, "="),
-        tags=list(tags), respect_robots=robots,
+        tags=list(tags), respect_robots=robots, max_duration=max_time,
     )
 
     console.print(f"\n[bold white]▶ Scanning[/] [cyan]{target}[/]  [grey50]({profile})[/]\n")
@@ -93,6 +94,11 @@ def scan(target, authorize, profile, no_crawl, max_urls, depth, threads, timeout
 
     _print_summary(result)
     _print_findings(result)
+    st = result.stats or {}
+    if st.get("requests") and not st.get("responses"):
+        console.print("\n[bold yellow]⚠ No HTTP response was received from the target.[/] "
+                      "Results only reflect checks that don't need HTTP (e.g. DNS). "
+                      "Check the URL, network/proxy, or try --timeout.")
 
     if output:
         fmt = report_mod.format_for_path(output)
@@ -148,9 +154,9 @@ def _print_summary(result):
     t.add_row("URLs scanned", str(result.urls_scanned))
     if result.stats:
         s = result.stats
-        t.add_row("Requests", f"{s.get('requests',0)} "
+        t.add_row("Requests", f"{s.get('requests',0)} sent · {s.get('responses',0)} answered "
                   f"({s.get('cache_hits',0)} cached, {s.get('coalesced',0)} shared, "
-                  f"{s.get('errors',0)} err, {s.get('avg_latency_ms',0)}ms avg)")
+                  f"{s.get('errors',0)} failed, {s.get('avg_latency_ms',0)}ms avg)")
     if result.tech_stack:
         t.add_row("Tech stack", ", ".join(result.tech_stack))
     if result.module_errors:

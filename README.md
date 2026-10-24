@@ -51,7 +51,7 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 ```
 
-Requires **Python 3.10+**.
+Requires **Python 3.11+**.
 
 ## Usage
 
@@ -96,6 +96,9 @@ fsv triage <scan_id> <finding_id> false_positive --note "test endpoint"
 
 # Compare two scans (before/after a fix)
 fsv diff <baseline_id> <current_id>
+
+# Time-box a scan (partial results are kept)
+fsv scan example.com --authorize --max-time 600
 
 # Housekeeping
 fsv prune --keep 50
@@ -222,12 +225,39 @@ the result is sorted by severity then confidence.
 | `FSV_TOKEN` | *(unset)* | if set, every `/api` and `/ws` call must send it (`X-FSV-Token` header or `?token=`) — recommended when not bound to loopback |
 | `FSV_MAX_SCANS` | `3` | max concurrent scans the web server will run |
 | `FSV_DISABLED_MODULES` | *(none)* | comma-separated module names to disable without code changes |
+| `FSV_ALLOWED_HOSTS` | *(none)* | extra Host names the dashboard may be reached by (loopback + `FSV_HOST` always allowed; `*` = any) |
+
+### Dashboard security
+
+The dashboard listens on loopback, but any web page open in your browser can still
+talk to loopback. FSV's request guard (`fsv/web/security.py`) blocks that:
+
+- **DNS rebinding** — requests whose `Host` isn't loopback / `FSV_HOST` / `FSV_ALLOWED_HOSTS` get a 403.
+- **CSRF** — state-changing requests and WebSocket handshakes with a foreign `Origin`
+  (or `Sec-Fetch-Site: cross-site`) are refused, and request bodies must be `application/json`.
+- **Token** — with `FSV_TOKEN` set, every API/WebSocket call needs it. Open the dashboard once
+  as `http://127.0.0.1:7474/?token=…`; the browser remembers it.
+
+If you bind to `0.0.0.0` (e.g. in a container), set `FSV_TOKEN` — FSV warns at start-up if you don't.
 
 ### CI gating
 
 ```bash
-# fail the build if any high-or-worse finding exists
-fsv scan example.com --authorize --fail-on high -o report.sarif
+# fail the build if any high-or-worse finding exists; never run longer than 15 min
+fsv scan example.com --authorize --fail-on high --max-time 900 -o report.sarif
+```
+
+### Reports never re-leak secrets
+
+When FSV finds an exposed `.env`, credentials file or an API key in a page, the report
+shows *where* and *which key* — values are masked (`DB_PASSWORD=****`, `AKIA…****LE`),
+so the report itself doesn't become a second copy of the leak.
+
+### Development
+
+```bash
+pip install -e . -r requirements-dev.txt
+pytest -q        # unit + integration tests (spins up local test servers, no internet needed)
 ```
 
 ## How reports work

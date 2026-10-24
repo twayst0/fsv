@@ -99,3 +99,20 @@ async def test_db_migration_and_history(site):
     assert len(hist) >= 1
     # prefix lookup
     assert (await db.get_scan(r.scan_id[:8])) is not None
+
+
+async def test_concurrent_init_db_is_safe():
+    """Regression: parallel first calls used to race on ALTER TABLE (duplicate column)."""
+    import aiosqlite, os
+    path = os.environ["FSV_DB"]
+    # start from a v1-shaped table so the migration path actually runs
+    async with aiosqlite.connect(path) as conn:
+        await conn.execute("CREATE TABLE scans (scan_id TEXT PRIMARY KEY, target TEXT NOT NULL, "
+                           "status TEXT NOT NULL DEFAULT 'pending', started_at TEXT NOT NULL, "
+                           "finished_at TEXT, duration_s REAL DEFAULT 0, urls_scanned INTEGER DEFAULT 0, "
+                           "tech_stack TEXT DEFAULT '[]', findings TEXT DEFAULT '[]', error TEXT, "
+                           "config TEXT DEFAULT '{}')")
+        await conn.commit()
+    db._initialized.clear()
+    await asyncio.gather(*(db.init_db() for _ in range(8)))
+    assert await db.list_scans() == []

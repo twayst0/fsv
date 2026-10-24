@@ -55,6 +55,9 @@ MAX_CONCURRENT_SCANS = int(os.getenv("FSV_MAX_SCANS", "3"))
 # Optional API token: when set, every /api and /ws call must send it
 # (header "X-FSV-Token" or ?token=...). Recommended if FSV_HOST is not loopback.
 API_TOKEN = os.getenv("FSV_TOKEN", "")
+# Extra Host names the dashboard may be reached by (comma-separated; "*" = any).
+# Loopback names and FSV_HOST are always allowed. Guards against DNS rebinding.
+ALLOWED_HOSTS = os.getenv("FSV_ALLOWED_HOSTS", "")
 
 # ── XSS payloads (detection only) ────────────────────────
 XSS_PAYLOADS = [

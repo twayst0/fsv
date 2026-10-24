@@ -65,3 +65,49 @@ async def test_sri_flags_third_party_scripts():
     assert len(findings) == 1
     assert "cdn.other.com" in findings[0].evidence
     assert "/local.js" not in findings[0].evidence
+
+
+# ── path scanner: content validators + redaction ─────────────────────────────
+
+from fsv.modules.path_scanner import VALIDATORS, redact_preview, PathScanner
+
+
+@pytest.mark.parametrize("path,body,ctype,ok", [
+    ("/.git/HEAD", "ref: refs/heads/main\n", "text/plain", True),
+    ("/.git/HEAD", "<html>catch-all page</html>", "text/html", False),
+    ("/.env", "DB_HOST=x\nDB_PASS=y", "text/plain", True),
+    ("/.env", "<!doctype html><div>APP=1</div>", "text/html", False),
+    ("/backup.sql", "CREATE TABLE users (id int);", "application/sql", True),
+    ("/backup.sql", "error: you have an error in your sql syntax", "text/html", False),
+    ("/swagger.json", '{"openapi":"3.1.0"}', "application/json", True),
+    ("/swagger.json", '<html>docs</html>', "text/html", False),
+    ("/id_rsa", "-----BEGIN OPENSSH PRIVATE KEY-----\nabc", "text/plain", True),
+])
+def test_path_validators(path, body, ctype, ok):
+    assert VALIDATORS[path](body, ctype) is ok
+
+
+def test_redaction_masks_values_keeps_keys():
+    out = redact_preview("/.env", "DB_USER=admin\nDB_PASS=hunter2\n# comment")
+    assert "hunter2" not in out and "admin" not in out
+    assert "DB_PASS=****" in out and "# comment" in out
+    assert "PRIVATE KEY" in redact_preview("/id_rsa", "-----BEGIN RSA PRIVATE KEY-----\nMIIE")
+    assert "MIIE" not in redact_preview("/id_rsa", "-----BEGIN RSA PRIVATE KEY-----\nMIIE")
+
+
+async def test_catch_all_server_does_not_report_git_head():
+    class CatchAll:
+        async def request(self, *a, **k):
+            from fsv.core.http_client import Response
+            return Response(status=200, headers={"Content-Type": "text/html"},
+                            body="<html><body>Welcome to our shop</body></html>" * 3)
+    s = PathScanner(CatchAll(), _cfg())
+    findings = await s.scan("https://x.com")
+    assert not any(".git" in f.title or ".env" in f.title for f in findings)
+
+
+def test_mask_secret():
+    from fsv.core.scanner import mask_secret
+    assert "IOSFODNN7EXAMP" not in mask_secret("AKIAIOSFODNN7EXAMPLE")
+    m = mask_secret("password = 'hunter22'")
+    assert m.startswith("password = '") and "hunter22" not in m

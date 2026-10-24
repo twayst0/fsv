@@ -1,6 +1,7 @@
 """FSV — Base scanner class every module extends."""
 
 from __future__ import annotations
+import re
 from abc import ABC, abstractmethod
 
 from fsv.core.models import Finding, ScanConfig
@@ -73,3 +74,20 @@ class BaseScanner(ABC):
             if k.lower() == nl:
                 return v
         return None
+
+
+def mask_secret(value: str, keep_start: int = 4, keep_end: int = 2) -> str:
+    """
+    'AKIAIOSFODNN7EXAMPLE'   → 'AKIA…************LE'
+    "password = 'hunter22'"  → "password = 'hu******'"   (key kept, value masked)
+    Enough to locate the leak, not to reuse it.
+    """
+    value = value.strip()
+    kv = re.match(r"^([\w\-]+\s*[=:]\s*['\"]?)(.+?)(['\"]?)$", value)
+    if kv and len(kv.group(2)) >= 4:
+        return kv.group(1) + mask_secret(kv.group(2), 2, 0) + kv.group(3)
+    if len(value) <= keep_start + keep_end + 2:
+        return value[:2] + "*" * max(0, len(value) - 2)
+    hidden = len(value) - keep_start - keep_end
+    tail = value[-keep_end:] if keep_end else ""
+    return f"{value[:keep_start]}…{'*' * min(hidden, 12)}{tail}"

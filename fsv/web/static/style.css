@@ -361,24 +361,26 @@ footer b{color:var(--muted)}
 .adv.open{max-height:900px;opacity:1;margin-top:16px}
 .adv-grid{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
 .adv-field{margin-bottom:14px}
-.adv-field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:550}
-.adv-field label em{color:var(--faint);font-style:normal;font-weight:400}
+.adv-field > label,.mods-head > label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:550}
+.adv-field > label em,.mods-head > label em{color:var(--faint);font-style:normal;font-weight:400}
 .adv-field input{width:100%;height:40px;border-radius:10px;border:1px solid var(--stroke);
   background:rgba(0,0,0,.22);color:var(--text);padding:0 13px;font-size:13px;font-family:var(--mono);outline:none}
 :root[data-theme="light"] .adv-field input{background:rgba(255,255,255,.55)}
 .adv-field input:focus{border-color:rgba(255,255,255,.3)}
 
-.mods-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.mods-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:10px;flex-wrap:wrap}
+.mods-head > label{margin-bottom:0}
 .mods-acts{display:flex;gap:6px}
 .chip-btn{font-size:11px;padding:4px 10px;border-radius:7px;border:1px solid var(--stroke-soft);
   background:var(--glass);color:var(--muted);cursor:pointer;transition:.15s;font-family:var(--mono)}
 .chip-btn:hover{background:var(--glass-2);color:var(--text)}
-.mod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:7px}
+.mod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:7px}
 .mod{display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:9px;cursor:pointer;
   border:1px solid var(--stroke-soft);background:var(--glass);transition:.15s;font-size:12px;position:relative}
 .mod:hover{background:var(--glass-2)}
 .mod input{position:absolute;opacity:0;width:0}
-.mod .mod-name{flex:1;font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mod .mod-name{flex:1;min-width:0;font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mod .mod-cat{flex-shrink:0}
 .mod .mod-cat{font-size:9px;text-transform:uppercase;letter-spacing:.6px;padding:2px 6px;border-radius:5px;
   background:rgba(99,168,255,.14);color:var(--low)}
 .mod.active .mod-cat{background:rgba(255,154,66,.16);color:var(--high)}
@@ -464,4 +466,32 @@ footer b{color:var(--muted)}
 @media (prefers-reduced-motion:reduce){
   .owasp-card.show,.modal-back.show{animation:none!important}
   .owasp-bar span,.adv{transition:none!important}
+}
+
+/* v1.2 — advanced auth fields, delta line, history delete, hidden scheme prefix */
+.adv-2col{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:620px){.adv-2col{grid-template-columns:1fr}}
+.adv-field textarea{width:100%;border-radius:10px;border:1px solid var(--stroke);resize:vertical;
+  background:rgba(0,0,0,.22);color:var(--text);padding:9px 13px;font-size:12.5px;font-family:var(--mono);outline:none}
+:root[data-theme="light"] .adv-field textarea{background:rgba(255,255,255,.55)}
+.adv-field textarea:focus{border-color:rgba(255,255,255,.3)}
+.input-wrap.has-scheme .pre{display:none}
+.input-wrap.has-scheme input[type=text]{padding-left:16px}
+.delta{font-size:11px;font-family:var(--mono);color:var(--faint);margin-top:6px;min-height:14px}
+.delta .up{color:var(--crit)} .delta .down{color:#30c48d}
+.hist-del{flex-shrink:0;width:26px;height:26px;border-radius:7px;display:grid;place-items:center;
+  color:var(--faint);font-size:13px;opacity:0;transition:.15s;border:0;background:transparent;cursor:pointer}
+.hist-item:hover .hist-del{opacity:1}
+.hist-del:hover{background:rgba(255,84,104,.15);color:var(--crit)}
+.hist-live{font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--low);
+  border:1px solid currentColor;border-radius:5px;padding:1px 6px;margin-left:8px}
+@media(hover:none){.hist-del{opacity:1}}
+
+/* history row on narrow screens: drop the timestamp, let the target shrink */
+.hist-item .ht{min-width:0}
+@media(max-width:620px){
+  .hist-time{display:none}
+  .hist-item{gap:9px;padding:12px 13px}
+  .hist-item .hc .dot:nth-child(n+4){display:none}
+  .mod-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
 }

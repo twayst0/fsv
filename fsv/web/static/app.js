@@ -1,6 +1,26 @@
 /* FSV dashboard client — liquid glass */
 const $ = (id) => document.getElementById(id);
-const api = (p, o) => fetch(p, o).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e)).catch(() => Promise.reject({ detail: r.statusText })));
+/* API token (only needed when the server runs with FSV_TOKEN). Taken once from
+   ?token=… in the URL, then remembered in this browser. */
+let TOKEN = "";
+try {
+  const q = new URLSearchParams(location.search).get("token");
+  if (q) { localStorage.setItem("fsv-token", q); history.replaceState(null, "", location.pathname); }
+  TOKEN = localStorage.getItem("fsv-token") || "";
+} catch (e) {}
+const withToken = (u) => TOKEN ? u + (u.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(TOKEN) : u;
+
+async function api(p, o = {}) {
+  const opts = { ...o, headers: { ...(o.headers || {}), ...(TOKEN ? { "X-FSV-Token": TOKEN } : {}) } };
+  const r = await fetch(p, opts);
+  if (r.status === 401) {
+    const t = prompt("This FSV server requires an API token (FSV_TOKEN):", "");
+    if (t) { TOKEN = t.trim(); try { localStorage.setItem("fsv-token", TOKEN); } catch (e) {} return api(p, o); }
+  }
+  if (r.ok) return r.json();
+  let err; try { err = await r.json(); } catch (e) { err = { detail: r.statusText }; }
+  throw err;
+}
 
 let currentScanId = null;
 let currentResult = null;
@@ -74,8 +94,7 @@ $("advToggle").onclick = () => {
 
 /* reflect http/https prefix as the user types a scheme */
 $("target").addEventListener("input", () => {
-  const v = $("target").value.trim();
-  $("schemePre").textContent = /^http:\/\//i.test(v) ? "http://" : "https://";
+  $("target").parentElement.classList.toggle("has-scheme", /^https?:\/\//i.test($("target").value.trim()));
 });
 
 /* ── animation helpers ── */
@@ -140,6 +159,9 @@ async function startScan() {
     exclude_paths: $("exclude").value.split(",").map(s => s.trim()).filter(Boolean),
     tags: $("tags").value.split(",").map(s => s.trim()).filter(Boolean),
     respect_robots: $("robots").checked,
+    max_duration: parseInt($("maxDuration").value),
+    headers: parseLines($("hdrs").value, ":"),
+    cookies: parseLines($("cookies").value, "="),
     authorized: true,
   };
   // only send module list if the user narrowed it
@@ -154,6 +176,15 @@ async function startScan() {
   openWs(currentScanId);
 }
 
+function parseLines(text, sep) {
+  const out = {};
+  text.split("\n").forEach(line => {
+    const i = line.indexOf(sep);
+    if (i > 0) out[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+  });
+  return out;
+}
+
 async function cancelScan() {
   if (!currentScanId) return;
   $("cancelBtn").textContent = "Stopping…";
@@ -162,14 +193,24 @@ async function cancelScan() {
 
 function openWs(scanId) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  ws = new WebSocket(`${proto}://${location.host}/ws/${scanId}`);
+  ws = new WebSocket(withToken(`${proto}://${location.host}/ws/${scanId}`));
   ws.onmessage = (ev) => {
     const d = JSON.parse(ev.data);
     if (d.type === "progress") setProgress(d.phase, d.pct, d.message, d.findings);
-    else if (d.type === "complete") finishScan(scanId);
+    else if (d.type === "complete") {
+      if (d.summary === null) {           // dropped from the queue / failed before starting
+        setProgress(d.status || "cancelled", 0, d.error || "Scan did not start", 0);
+        toast(d.status === "failed" ? "Scan failed" : "Scan cancelled", d.error || "Removed from the queue", "var(--med)");
+        resetBtn(); if (ws) { ws.close(); ws = null; }
+        setTimeout(() => $("progressCard").classList.remove("show"), 1500);
+      } else finishScan(scanId);
+    }
   };
   ws.onerror = () => pollUntilDone(scanId);
-  ws.onclose = (e) => { if (e.code === 4401) { toast("Unauthorized", "API token required", "var(--crit)"); resetBtn(); } };
+  ws.onclose = (e) => {
+    if (e.code === 4401) { toast("Unauthorized", "API token required", "var(--crit)"); resetBtn(); }
+    else if (e.code === 1006 && $("cancelBtn").offsetParent !== null) pollUntilDone(scanId);
+  };
 }
 async function pollUntilDone(scanId) {
   for (let i = 0; i < 1200; i++) {
@@ -248,6 +289,7 @@ function renderResult(d) {
 
   renderOwasp(d.owasp || {}, c.total || 0);
   loadSparkline(d.target);
+  loadDelta(d.scan_id);
 
   updateDownloadLink();
   $("dlFmt").onchange = updateDownloadLink;
@@ -274,7 +316,7 @@ function updateDownloadLink() {
   if (!currentScanId) return;
   const fmt = $("dlFmt").value;
   const a = $("dlBtn");
-  a.href = `/api/scan/${currentScanId}/report?format=${fmt}`;
+  a.href = withToken(`/api/scan/${currentScanId}/report?format=${fmt}`);
   a.textContent = `↓ ${fmt.toUpperCase()}`;
   a.download = `fsv-report.${fmt}`;
 }
@@ -300,6 +342,16 @@ function renderOwasp(breakdown, total) {
       <span class="owasp-bar"><span style="width:${w}%"></span></span>
       <span class="owasp-n">${n}</span></div>`;
   }).join("");
+}
+
+/* ── change since the previous scan of this host ── */
+async function loadDelta(scanId) {
+  const el = $("ovDelta"); el.innerHTML = "";
+  let d; try { d = await api(`/api/scan/${scanId}/delta`); } catch (e) { return; }
+  if (!d || !d.previous || currentScanId !== scanId) return;
+  const cls = d.risk_delta > 0 ? "up" : d.risk_delta < 0 ? "down" : "";
+  el.innerHTML = `vs previous: <span class="${cls}">${d.risk_delta > 0 ? "+" : ""}${d.risk_delta} risk</span>` +
+    ` · <span class="up">${d.counts.new} new</span> · <span class="down">${d.counts.resolved} resolved</span>`;
 }
 
 /* ── sparkline trend ── */
@@ -450,14 +502,25 @@ async function loadHistory() {
     return `<div class="glass hist-item ${checked ? 'sel' : ''}" data-id="${s.scan_id}" style="--i:${Math.min(i, 20)}">
       <label class="hist-pick" title="Select to compare"><input type="checkbox" data-id="${s.scan_id}" ${checked}><span class="box"></span></label>
       <span class="hist-grade" style="color:${gc};border-color:${gc}">${g}</span>
-      <span class="ht">${esc(s.target)}${tags}</span>
+      <span class="ht">${esc(s.target)}${s.status === "running" ? '<span class="hist-live">live</span>' : ""}${tags}</span>
       <span class="hc">${dots || '<span class="dot" style="color:var(--low)">clean</span>'}</span>
-      <span class="hist-time">${esc(when)}</span></div>`;
+      <span class="hist-time">${esc(when)}</span>
+      <button class="hist-del" data-id="${s.scan_id}" title="Delete scan" aria-label="Delete scan">✕</button></div>`;
   }).join("") || `<div class="empty show" style="padding:30px"><div class="small">No scans yet.</div></div>`;
 
   $("histList").querySelectorAll(".hist-item").forEach(el => {
     el.onclick = async (e) => {
       if (e.target.closest(".hist-pick")) return;
+      if (e.target.closest(".hist-del")) {
+        e.stopPropagation();
+        if (!confirm("Delete this scan from the local database?")) return;
+        try {
+          await api(`/api/scan/${el.dataset.id}`, { method: "DELETE" });
+          compareSel = compareSel.filter(x => x !== el.dataset.id);
+          toast("Scan deleted", "", "var(--info)"); loadHistory(); refreshGlobalStats();
+        } catch (err) { toast("Delete failed", err.detail || "", "var(--crit)"); }
+        return;
+      }
       try { renderResult(await api(`/api/scan/${el.dataset.id}`)); window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) {}
     };
   });
@@ -471,6 +534,24 @@ async function loadHistory() {
     $("histHint").textContent = compareSel.length === 2 ? "ready — click Compare" :
       compareSel.length === 1 ? "select one more" : "select two to compare";
     loadHistory();
+
+/* re-attach to a scan that was still running when the page was reloaded */
+(async function resumeActive() {
+  let active; try { active = await api("/api/active"); } catch (e) { return; }
+  if (!active || !active.length) return;
+  const s = active[active.length - 1];
+  currentScanId = s.scan_id;
+  $("target").value = s.target;
+  $("target").parentElement.classList.toggle("has-scheme", true);
+  $("scanBtn").disabled = true; $("scanBtn").classList.add("loading");
+  $("scanBtn").querySelector("span").textContent = "Scanning";
+  $("cancelBtn").classList.remove("hidden");
+  $("progressCard").classList.add("show");
+  const l = s.latest;
+  if (l && l.type === "progress") setProgress(l.phase, l.pct, l.message, l.findings);
+  toast("Re-attached to running scan", hostOf(s.target), "var(--low)");
+  openWs(s.scan_id);
+})();
   });
 }
 $("compareBtn").onclick = async () => {
@@ -511,3 +592,21 @@ document.addEventListener("keydown", e => {
 });
 
 loadHistory();
+
+/* re-attach to a scan that was still running when the page was reloaded */
+(async function resumeActive() {
+  let active; try { active = await api("/api/active"); } catch (e) { return; }
+  if (!active || !active.length) return;
+  const s = active[active.length - 1];
+  currentScanId = s.scan_id;
+  $("target").value = s.target;
+  $("target").parentElement.classList.toggle("has-scheme", true);
+  $("scanBtn").disabled = true; $("scanBtn").classList.add("loading");
+  $("scanBtn").querySelector("span").textContent = "Scanning";
+  $("cancelBtn").classList.remove("hidden");
+  $("progressCard").classList.add("show");
+  const l = s.latest;
+  if (l && l.type === "progress") setProgress(l.phase, l.pct, l.message, l.findings);
+  toast("Re-attached to running scan", hostOf(s.target), "var(--low)");
+  openWs(s.scan_id);
+})();

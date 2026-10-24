@@ -104,6 +104,7 @@ def _validate(target: str) -> tuple[str | None, str | None]:
         "'balanced' (default) adds safe active checks (XSS, SQLi, CORS, open-redirect, SSTI, "
         "host-header); 'aggressive' is the same modules at higher rate/concurrency. Returns "
         "findings grouped with severity, CWE, OWASP category, confidence and remediation. "
+        "Time-boxed by max_minutes (default 20; partial results are kept). "
         "Only scan targets the user owns or is authorized to test; pass authorized=true only "
         "after they confirm."
     )
@@ -117,8 +118,9 @@ async def fsv_scan(
     depth: int = 2,
     modules: list[str] | None = None,
     exclude_paths: list[str] | None = None,
+    max_minutes: int = 20,
 ) -> str:
-    """Full vulnerability scan with selectable profile."""
+    """Full vulnerability scan with selectable profile (time-boxed, default 20 min)."""
     if not authorized:
         return _auth_error()
     norm, err = _validate(target)
@@ -132,6 +134,7 @@ async def fsv_scan(
         target=norm, modules=list(modules or []), crawl=crawl,
         max_urls=max_urls, depth=depth, profile=prof,
         exclude_paths=list(exclude_paths or []),
+        max_duration=max(0, max_minutes) * 60,
     )
     result = await engine.run_scan(config)
     return _dump(_findings_payload(result))

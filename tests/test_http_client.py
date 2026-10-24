@@ -15,7 +15,7 @@ async def test_token_bucket_rate_limits():
 
 
 def test_stats_avg_latency():
-    s = HTTPStats(requests=4, total_time=0.4)
+    s = HTTPStats(requests=6, responses=4, total_time=0.4)
     assert s.as_dict()["avg_latency_ms"] == 100.0
 
 

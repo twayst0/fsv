@@ -10,11 +10,19 @@ Hardening over the first version:
   • optional shared-secret token (FSV_TOKEN) on every /api and /ws call
   • input validation surfaced as 400s instead of 500s
   • multi-format report download (md/json/html/sarif/csv)
-  • triage, diff and target-trend endpoints
+  • triage, diff, delta-vs-previous and target-trend endpoints
+  • RequestGuard: Host allowlist (DNS rebinding) + same-origin / JSON-only
+    writes (CSRF) — see fsv/web/security.py
+  • reconnectable progress: the latest event per scan is replayed, so a
+    reloaded dashboard re-attaches to a running scan
 """
 
 from __future__ import annotations
 import asyncio
+import hmac
+import re
+from collections import OrderedDict
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Query
@@ -23,18 +31,33 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from fsv import __version__
-from fsv.config import WEB_HOST, WEB_PORT, MAX_CONCURRENT_SCANS, API_TOKEN
+from fsv.config import (
+    WEB_HOST, WEB_PORT, MAX_CONCURRENT_SCANS, API_TOKEN, ALLOWED_HOSTS,
+)
 from fsv.core.models import ScanConfig, ScanProfile, FindingStatus, normalize_target
 from fsv.core import engine, database as db, registry
 from fsv.core import report as report_mod
 from fsv.core.diff import compare
+from fsv.web.security import RequestGuard, allowed_hosts
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-app = FastAPI(title="FSV", version=__version__)
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
 _scan_sem = asyncio.Semaphore(MAX_CONCURRENT_SCANS)
+_HOSTS = allowed_hosts(WEB_HOST, ALLOWED_HOSTS)
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    await db.init_db()
+    await db.mark_interrupted()   # flush stale 'running' rows from a prior crash
+    yield
+    for t in list(_bg_tasks):     # stop in-flight scans cleanly on shutdown
+        t.cancel()
+
+
+app = FastAPI(title="FSV", version=__version__, lifespan=_lifespan)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+app.add_middleware(RequestGuard, hosts=_HOSTS)
 
 
 # ── auth ────────────────────────────────────────────────────────────────────
@@ -42,8 +65,8 @@ _scan_sem = asyncio.Semaphore(MAX_CONCURRENT_SCANS)
 def _check_token(request: Request) -> None:
     if not API_TOKEN:
         return
-    sent = request.headers.get("X-FSV-Token") or request.query_params.get("token")
-    if sent != API_TOKEN:
+    sent = request.headers.get("X-FSV-Token") or request.query_params.get("token") or ""
+    if not hmac.compare_digest(sent, API_TOKEN):
         raise HTTPException(401, "Invalid or missing API token.")
 
 
@@ -62,6 +85,9 @@ class ScanRequest(BaseModel):
     exclude_paths: list[str] = []
     tags:     list[str] = []
     respect_robots: bool = False
+    max_duration: int   = 0       # seconds, 0 = unlimited
+    headers:  dict[str, str] = {} # e.g. Authorization for authenticated scans
+    cookies:  dict[str, str] = {}
     authorized: bool    = False   # user must confirm authorization
 
 
@@ -74,9 +100,12 @@ class TriageRequest(BaseModel):
 # ── websocket progress hub ──────────────────────────────────────────────────
 
 class ProgressHub:
+    """Fan-out of progress events; remembers the latest event per scan for replay."""
+    MAX_REMEMBERED = 200
+
     def __init__(self) -> None:
         self._queues: dict[str, list[asyncio.Queue]] = {}
-        self._last: dict[str, dict] = {}   # replay the latest event to late subscribers
+        self._last: OrderedDict[str, dict] = OrderedDict()
 
     def subscribe(self, scan_id: str) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue()
@@ -91,23 +120,21 @@ class ProgressHub:
             if not self._queues[scan_id]:
                 self._queues.pop(scan_id, None)
 
+    def latest(self, scan_id: str) -> dict | None:
+        return self._last.get(scan_id)
+
     def publish(self, scan_id: str, payload: dict) -> None:
-        if payload.get("type") == "complete":
-            self._last[scan_id] = payload
+        self._last[scan_id] = payload
+        self._last.move_to_end(scan_id)
+        while len(self._last) > self.MAX_REMEMBERED:   # bounded memory
+            self._last.popitem(last=False)
         for q in list(self._queues.get(scan_id, [])):
             q.put_nowait(payload)
 
 
 hub = ProgressHub()
 _bg_tasks: set = set()
-
-
-# ── lifecycle ─────────────────────────────────────────────────────────────────
-
-@app.on_event("startup")
-async def _startup() -> None:
-    await db.init_db()
-    await db.mark_interrupted()   # flush stale 'running' rows from a prior crash
+_pending: dict[str, dict] = {}      # scan_id → {"task", "target"} until it finishes
 
 
 # ── pages ─────────────────────────────────────────────────────────────────────
@@ -155,13 +182,15 @@ async def api_scan(req: ScanRequest, request: Request) -> JSONResponse:
             depth=req.depth, timeout=req.timeout, threads=req.threads,
             rate_per_sec=req.rate_per_sec, profile=prof, exclude_paths=req.exclude_paths,
             tags=req.tags, respect_robots=req.respect_robots,
+            max_duration=req.max_duration, headers=req.headers, cookies=req.cookies,
         )
     except Exception as exc:
         raise HTTPException(400, f"Invalid scan configuration: {exc}")
 
-    if _scan_sem.locked() and len(_bg_tasks) >= MAX_CONCURRENT_SCANS:
-        raise HTTPException(429, f"Too many scans running (max {MAX_CONCURRENT_SCANS}). "
-                            "Try again shortly.")
+    # allow a short queue behind the running scans, then push back
+    if len(_pending) >= MAX_CONCURRENT_SCANS * 2:
+        raise HTTPException(429, f"Too many scans running or queued "
+                            f"(max {MAX_CONCURRENT_SCANS} at once). Try again shortly.")
 
     scan_id = engine.new_scan_id()
 
@@ -173,12 +202,27 @@ async def api_scan(req: ScanRequest, request: Request) -> JSONResponse:
         })
 
     async def _run() -> None:
-        async with _scan_sem:
-            result = await engine.run_scan(config, progress_cb=_cb, scan_id=scan_id)
-        hub.publish(scan_id, {"type": "complete", "scan_id": result.scan_id,
-                              "summary": result.summary_dict()})
+        try:
+            if _scan_sem.locked():
+                hub.publish(scan_id, {"type": "progress", "phase": "queued", "pct": 0,
+                                      "current": 0, "total": 0, "findings": 0,
+                                      "message": "Waiting for a free scan slot …"})
+            async with _scan_sem:
+                result = await engine.run_scan(config, progress_cb=_cb, scan_id=scan_id)
+            hub.publish(scan_id, {"type": "complete", "scan_id": result.scan_id,
+                                  "summary": result.summary_dict()})
+        except asyncio.CancelledError:
+            # cancelled while still queued (never reached the engine) or at shutdown
+            hub.publish(scan_id, {"type": "complete", "scan_id": scan_id,
+                                  "summary": None, "status": "cancelled"})
+        except Exception as exc:   # engine persists its own failures; this is a safety net
+            hub.publish(scan_id, {"type": "complete", "scan_id": scan_id,
+                                  "summary": None, "status": "failed", "error": str(exc)})
+        finally:
+            _pending.pop(scan_id, None)
 
-    task = asyncio.get_event_loop().create_task(_run())
+    task = asyncio.get_running_loop().create_task(_run())
+    _pending[scan_id] = {"task": task, "target": target}
     _bg_tasks.add(task)
     task.add_done_callback(_bg_tasks.discard)
     return JSONResponse({"scan_id": scan_id, "status": "running"})
@@ -187,7 +231,23 @@ async def api_scan(req: ScanRequest, request: Request) -> JSONResponse:
 @app.post("/api/scan/{scan_id}/cancel")
 async def api_cancel_scan(scan_id: str, request: Request) -> JSONResponse:
     _check_token(request)
-    return JSONResponse({"cancelled": engine.cancel_scan(scan_id)})
+    if engine.cancel_scan(scan_id):
+        return JSONResponse({"cancelled": True})
+    queued = _pending.get(scan_id)
+    if queued:                    # still waiting for a slot — just drop it
+        queued["task"].cancel()
+        return JSONResponse({"cancelled": True, "queued": True})
+    return JSONResponse({"cancelled": False})
+
+
+@app.get("/api/active")
+async def api_active(request: Request) -> JSONResponse:
+    """Scans running or queued in this process — lets a reloaded UI re-attach."""
+    _check_token(request)
+    return JSONResponse([
+        {"scan_id": sid, "target": info["target"], "latest": hub.latest(sid)}
+        for sid, info in _pending.items()
+    ])
 
 
 @app.get("/api/scan/{scan_id}")
@@ -231,7 +291,8 @@ async def api_report(scan_id: str, request: Request,
         content, media = report_mod.render(result, format)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    fname = f"fsv-{db.host_of(result.target) or 'scan'}-{scan_id[:8]}.{format}"
+    host = re.sub(r"[^A-Za-z0-9._-]", "_", db.host_of(result.target) or "scan")
+    fname = f"fsv-{host}-{result.scan_id[:8]}.{format}"
     return Response(content, media_type=media,
                     headers={"Content-Disposition": f'inline; filename="{fname}"'})
 
@@ -285,6 +346,19 @@ async def api_diff(request: Request, baseline: str, current: str) -> JSONRespons
     return JSONResponse(compare(a, b))
 
 
+@app.get("/api/scan/{scan_id}/delta")
+async def api_delta(scan_id: str, request: Request) -> JSONResponse:
+    """Compare a scan with the previous finished scan of the same host."""
+    _check_token(request)
+    cur = await db.get_scan(scan_id)
+    if cur is None:
+        raise HTTPException(404, "Scan not found")
+    prev = await db.previous_scan(cur.target, cur.started_at)
+    if prev is None:
+        return JSONResponse({"previous": None})
+    return JSONResponse({"previous": prev.scan_id, **compare(prev, cur)})
+
+
 @app.get("/api/trend")
 async def api_trend(request: Request, target: str, limit: int = 20) -> JSONResponse:
     _check_token(request)
@@ -296,8 +370,8 @@ async def api_trend(request: Request, target: str, limit: int = 20) -> JSONRespo
 @app.websocket("/ws/{scan_id}")
 async def ws_progress(websocket: WebSocket, scan_id: str) -> None:
     if API_TOKEN:
-        token = websocket.query_params.get("token")
-        if token != API_TOKEN:
+        token = websocket.query_params.get("token") or ""
+        if not hmac.compare_digest(token, API_TOKEN):
             await websocket.close(code=4401)
             return
     await websocket.accept()
@@ -324,6 +398,9 @@ def run() -> None:
     print(f"\n  FSV v{__version__} dashboard → {scheme}://{WEB_HOST}:{WEB_PORT}")
     if API_TOKEN:
         print("  API token required (FSV_TOKEN is set).")
+    if _HOSTS is None and not API_TOKEN:
+        print("  ⚠ Listening on a wildcard address with no FSV_TOKEN and no FSV_ALLOWED_HOSTS:\n"
+              "    anyone who can reach this port can start scans. Set FSV_TOKEN.")
     print()
     uvicorn.run(app, host=WEB_HOST, port=WEB_PORT, log_level="info")
 

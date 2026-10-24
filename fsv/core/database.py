@@ -10,6 +10,7 @@ Tables
 from __future__ import annotations
 import json
 import os
+import sqlite3
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
@@ -76,7 +77,12 @@ async def init_db() -> None:
             have = {row[1] for row in await cur.fetchall()}
         for name, ddl in _SCAN_COLUMNS_V2:
             if name not in have:
-                await db.execute(f"ALTER TABLE scans ADD COLUMN {name} {ddl}")
+                try:
+                    await db.execute(f"ALTER TABLE scans ADD COLUMN {name} {ddl}")
+                except sqlite3.OperationalError as exc:
+                    # another coroutine/process migrated first — that's fine
+                    if "duplicate column" not in str(exc).lower():
+                        raise
         await db.execute("CREATE INDEX IF NOT EXISTS idx_scans_started ON scans(started_at)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_scans_target  ON scans(target)")
         await db.execute("""

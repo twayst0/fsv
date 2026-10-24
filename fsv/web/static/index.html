@@ -77,7 +77,23 @@
         <div class="opt">Rate/s
           <div class="sel"><select id="rate"><option>5</option><option>10</option><option selected>20</option><option>50</option><option>100</option></select></div>
         </div>
+        <div class="opt">Time limit
+          <div class="sel"><select id="maxDuration">
+            <option value="0" selected>none</option><option value="300">5 min</option>
+            <option value="900">15 min</option><option value="1800">30 min</option><option value="3600">1 h</option>
+          </select></div>
+        </div>
         <label class="chk"><input type="checkbox" id="robots"><span class="box"></span>Respect robots.txt</label>
+      </div>
+      <div class="adv-2col">
+        <div class="adv-field">
+          <label>Request headers <em>(one per line — for authenticated scans)</em></label>
+          <textarea id="hdrs" rows="3" placeholder="Authorization: Bearer …" spellcheck="false"></textarea>
+        </div>
+        <div class="adv-field">
+          <label>Cookies <em>(one per line)</em></label>
+          <textarea id="cookies" rows="3" placeholder="session=…" spellcheck="false"></textarea>
+        </div>
       </div>
       <div class="adv-field">
         <label>Exclude paths <em>(comma-separated globs, e.g. /admin/*, /logout)</em></label>
@@ -134,6 +150,7 @@
         <div class="score"><span id="riskScore">0</span><em>/100</em></div>
         <div class="score-l">risk score</div>
         <div class="gauge-target" id="ovTarget"></div>
+        <div class="delta" id="ovDelta"></div>
         <div class="spark" id="spark" title="risk trend for this host"></div>
         <div class="gauge-tech" id="ovTech"></div>
       </div>

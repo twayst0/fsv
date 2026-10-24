@@ -20,7 +20,7 @@ import uuid
 from collections import deque
 from datetime import datetime, timezone
 from typing import Callable
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlencode
 
 import aiohttp
 from bs4 import BeautifulSoup
@@ -138,95 +138,101 @@ async def run_scan(
     rate, threads = _profile_tuning(scan_config)
     http: HTTPClient | None = None
 
+    limit = scan_config.max_duration or None
     try:
-        connector  = aiohttp.TCPConnector(ssl=False, limit=max(20, threads * 2))
-        cookie_jar = aiohttp.CookieJar(unsafe=True)
-        hdrs = {"User-Agent": scan_config.user_agent or USER_AGENT, **scan_config.headers}
-        async with aiohttp.ClientSession(
-            connector=connector, cookie_jar=cookie_jar,
-            headers=hdrs, cookies=scan_config.cookies,
-        ) as session:
-            http = HTTPClient(
-                session,
-                rate_per_sec = rate,
-                max_retries  = scan_config.max_retries,
-                timeout      = scan_config.timeout,
-                rotate_ua    = scan_config.rotate_ua,
-                default_ua   = scan_config.user_agent or USER_AGENT,
-            )
+        async with asyncio.timeout(limit):
+            connector  = aiohttp.TCPConnector(ssl=False, limit=max(20, threads * 2))
+            cookie_jar = aiohttp.CookieJar(unsafe=True)
+            hdrs = {"User-Agent": scan_config.user_agent or USER_AGENT, **scan_config.headers}
+            async with aiohttp.ClientSession(
+                connector=connector, cookie_jar=cookie_jar,
+                headers=hdrs, cookies=scan_config.cookies,
+            ) as session:
+                http = HTTPClient(
+                    session,
+                    rate_per_sec = rate,
+                    max_retries  = scan_config.max_retries,
+                    timeout      = scan_config.timeout,
+                    rotate_ua    = scan_config.rotate_ua,
+                    default_ua   = scan_config.user_agent or USER_AGENT,
+                )
 
-            # 1) CRAWL
-            _emit("crawl", 0, 1, f"Crawling {scan_config.target} …")
-            crawler = Crawler(http, scan_config)
-            urls = await crawler.run(
-                on_page=lambda n: _emit("crawl", n, scan_config.max_urls,
-                                        f"Discovered {n} URL(s) …"),
-            )
-            result.urls = urls
-            result.urls_scanned = len(urls)
-            _emit("crawl", 1, 1, f"Found {len(urls)} URL(s)")
+                # 1) CRAWL
+                _emit("crawl", 0, 1, f"Crawling {scan_config.target} …")
+                crawler = Crawler(http, scan_config)
+                urls = await crawler.run(
+                    on_page=lambda n: _emit("crawl", n, scan_config.max_urls,
+                                            f"Discovered {n} URL(s) …"),
+                )
+                result.urls = urls
+                result.urls_scanned = len(urls)
+                _emit("crawl", 1, 1, f"Found {len(urls)} URL(s)")
 
-            # 2) SELECT MODULES
-            all_modules = registry.load_registry()
-            want = _select_modules(scan_config)
-            result.modules_run = want
-            scanners = {name: all_modules[name](http, scan_config) for name in want}
-            site_modules    = [k for k in scanners if registry.is_site_wide(k)]
-            per_url_modules = [k for k in scanners if not registry.is_site_wide(k)]
+                # 2) SELECT MODULES
+                all_modules = registry.load_registry()
+                want = _select_modules(scan_config)
+                result.modules_run = want
+                scanners = {name: all_modules[name](http, scan_config) for name in want}
+                site_modules    = [k for k in scanners if registry.is_site_wide(k)]
+                per_url_modules = [k for k in scanners if not registry.is_site_wide(k)]
 
-            def _module_failed(name: str) -> None:
-                result.module_errors[name] = result.module_errors.get(name, 0) + 1
+                def _module_failed(name: str) -> None:
+                    result.module_errors[name] = result.module_errors.get(name, 0) + 1
 
-            # 3) SITE-WIDE MODULES — concurrently, once on the base target
-            site_done = 0
+                # 3) SITE-WIDE MODULES — concurrently, once on the base target
+                site_done = 0
 
-            async def _run_site(name: str) -> None:
-                nonlocal site_done
-                try:
-                    findings = await scanners[name].scan(scan_config.target)
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    _module_failed(name)
-                    findings = []
-                result.findings.extend(findings)
-                if name == "tech":
-                    for f in findings:
-                        if f.extra.get("technologies"):
-                            result.tech_stack = list(f.extra["technologies"])
-                site_done += 1
-                _emit("recon", site_done, len(site_modules), f"[{name}] done")
-
-            if site_modules:
-                _emit("recon", 0, len(site_modules),
-                      f"Running {len(site_modules)} site-wide module(s) …")
-                await asyncio.gather(*(_run_site(m) for m in site_modules))
-
-            # 4) PER-URL MODULES — bounded concurrency across URL×module pairs
-            jobs = [(u, m) for u in urls for m in per_url_modules]
-            total_work, done = len(jobs), 0
-            sem = asyncio.Semaphore(max(2, threads))
-
-            async def _run_job(url: str, name: str) -> None:
-                nonlocal done
-                async with sem:
+                async def _run_site(name: str) -> None:
+                    nonlocal site_done
                     try:
-                        found = await scanners[name].scan(url)
+                        findings = await scanners[name].scan(scan_config.target)
                     except asyncio.CancelledError:
                         raise
                     except Exception:
                         _module_failed(name)
-                        found = []
-                    result.findings.extend(found)
-                    done += 1
-                    if done % 3 == 0 or done == total_work:
-                        short = url if len(url) <= 55 else url[:55] + "…"
-                        _emit("scan", done, total_work, f"[{name}] {short}")
+                        findings = []
+                    result.findings.extend(findings)
+                    if name == "tech":
+                        for f in findings:
+                            if f.extra.get("technologies"):
+                                result.tech_stack = list(f.extra["technologies"])
+                    site_done += 1
+                    _emit("recon", site_done, len(site_modules), f"[{name}] done")
 
-            if jobs:
-                await asyncio.gather(*(_run_job(u, m) for (u, m) in jobs))
+                if site_modules:
+                    _emit("recon", 0, len(site_modules),
+                          f"Running {len(site_modules)} site-wide module(s) …")
+                    await asyncio.gather(*(_run_site(m) for m in site_modules))
+
+                # 4) PER-URL MODULES — bounded concurrency across URL×module pairs
+                jobs = [(u, m) for u in urls for m in per_url_modules]
+                total_work, done = len(jobs), 0
+                sem = asyncio.Semaphore(max(2, threads))
+
+                async def _run_job(url: str, name: str) -> None:
+                    nonlocal done
+                    async with sem:
+                        try:
+                            found = await scanners[name].scan(url)
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception:
+                            _module_failed(name)
+                            found = []
+                        result.findings.extend(found)
+                        done += 1
+                        if done % 3 == 0 or done == total_work:
+                            short = url if len(url) <= 55 else url[:55] + "…"
+                            _emit("scan", done, total_work, f"[{name}] {short}")
+
+                if jobs:
+                    await asyncio.gather(*(_run_job(u, m) for (u, m) in jobs))
 
         result.status = ScanStatus.COMPLETED
+
+    except TimeoutError:
+        result.status = ScanStatus.CANCELLED
+        result.error  = f"time limit reached ({scan_config.max_duration}s) — partial results"
 
     except asyncio.CancelledError:
         if scan_id not in _cancelled:
@@ -255,7 +261,7 @@ async def run_scan(
     if result.status == ScanStatus.COMPLETED:
         _emit("done", 1, 1, f"Scan complete — {len(result.findings)} findings")
     elif result.status == ScanStatus.CANCELLED:
-        _emit("cancelled", 1, 1, "Scan cancelled — partial results kept")
+        _emit("cancelled", 1, 1, result.error or "Scan cancelled — partial results kept")
     else:
         _emit("error", 1, 1, f"Scan failed: {result.error}")
     return result
@@ -265,6 +271,9 @@ def _finalize(result: ScanResult, http: HTTPClient | None, started_at: str) -> N
     result.findings = sort_findings(aggregate_findings(result.findings))
     if http is not None:
         result.stats = http.stats.as_dict()
+        if http.stats.requests and not http.stats.responses and not result.error:
+            result.error = ("target unreachable — no HTTP response was received; "
+                            "only non-HTTP checks (e.g. DNS) produced results")
     result.finished_at = datetime.now(timezone.utc).isoformat()
     result.duration_s = round(
         (datetime.fromisoformat(result.finished_at)
@@ -363,7 +372,42 @@ class Crawler:
             full = canonical_url(urljoin(base, href))
             if same_origin(full, self.host) and not self.excluded(full):
                 found.append(full)
+        found.extend(self._form_urls(soup, base))
         return list(dict.fromkeys(found))
+
+    _FORM_SKIP = {"password", "file", "submit", "button", "image", "reset"}
+
+    def _form_urls(self, soup, base: str) -> list[str]:
+        """
+        GET forms are entry points with parameters that plain links don't show
+        (search boxes, filters). Turn each into one URL using the form's own
+        defaults or a neutral placeholder, so per-URL modules see the parameters.
+        POST forms are left alone — submitting them could change state.
+        """
+        out = []
+        for form in soup.find_all("form"):
+            if (form.get("method") or "get").lower() != "get":
+                continue
+            params: dict[str, str] = {}
+            for field in form.find_all(["input", "select", "textarea"]):
+                name = field.get("name")
+                ftype = (field.get("type") or "text").lower()
+                if not name or ftype in self._FORM_SKIP:
+                    continue
+                if field.name == "select":
+                    opt = field.find("option")
+                    params[name] = (opt.get("value") or opt.text.strip()) if opt else ""
+                elif ftype in ("checkbox", "radio"):
+                    params.setdefault(name, field.get("value") or "on")
+                else:
+                    params[name] = field.get("value") or "fsv"
+            if not params:
+                continue
+            action = canonical_url(urljoin(base, form.get("action") or base))
+            url = urlparse(action)._replace(query=urlencode(params)).geturl()
+            if same_origin(url, self.host) and not self.excluded(url):
+                out.append(url)
+        return out
 
     async def run(self, on_page: Callable[[int], None] | None = None) -> list[str]:
         cfg = self.cfg

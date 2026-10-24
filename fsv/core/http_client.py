@@ -55,7 +55,8 @@ class TokenBucket:
 
 @dataclass
 class HTTPStats:
-    requests:   int = 0
+    requests:   int = 0      # every attempt sent on the wire (incl. failed/retried)
+    responses:  int = 0      # attempts that got an HTTP response back
     cache_hits: int = 0
     coalesced:  int = 0
     retries:    int = 0
@@ -65,9 +66,10 @@ class HTTPStats:
     total_time: float = 0.0
 
     def as_dict(self) -> dict:
-        avg = (self.total_time / self.requests) if self.requests else 0.0
+        avg = (self.total_time / self.responses) if self.responses else 0.0
         return {
             "requests":     self.requests,
+            "responses":    self.responses,
             "cache_hits":   self.cache_hits,
             "coalesced":    self.coalesced,
             "retries":      self.retries,
@@ -206,6 +208,7 @@ class HTTPClient:
             elif self.default_ua:
                 h.setdefault("User-Agent", self.default_ua)
             t0 = time.monotonic()
+            self.stats.requests += 1
             try:
                 to = aiohttp.ClientTimeout(total=self.timeout)
                 async with self.session.request(
@@ -217,7 +220,7 @@ class HTTPClient:
                     raw = raw[: self.max_body]
                     body = _decode(raw, resp.charset)
                     elapsed = time.monotonic() - t0
-                    self.stats.requests += 1
+                    self.stats.responses += 1
                     self.stats.bytes_in += len(raw)
                     self.stats.total_time += elapsed
                     self.stats.status_codes[resp.status] = (

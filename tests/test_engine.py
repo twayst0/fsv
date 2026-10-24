@@ -61,3 +61,36 @@ def test_crawler_excludes_logout_and_assets_and_globs():
     assert cr.excluded("https://x.com/app.js")
     assert cr.excluded("https://x.com/admin/users")
     assert not cr.excluded("https://x.com/products?id=1")
+
+
+def test_crawler_discovers_get_form_params_not_post():
+    from bs4 import BeautifulSoup
+    cfg = ScanConfig(target="https://x.com")
+    cr = Crawler(http=None, cfg=cfg)
+    html = ('<form action="/search"><input name="q"><select name="cat"><option value="a">A</option>'
+            '</select><input type="submit" name="go"></form>'
+            '<form method="post" action="/update"><input name="email"></form>'
+            '<form action="https://evil.net/x"><input name="q"></form>')
+    urls = cr._form_urls(BeautifulSoup(html, "lxml"), "https://x.com/")
+    assert urls == ["https://x.com/search?q=fsv&cat=a"]
+
+
+async def test_max_duration_keeps_partial_results(tmp_path):
+    import asyncio
+    from aiohttp import web
+    from fsv.core.engine import run_scan
+    async def slow(request):
+        await asyncio.sleep(5)
+        return web.Response(text="<html></html>", content_type="text/html")
+    app = web.Application(); app.router.add_route("*", "/{t:.*}", slow)
+    runner = web.AppRunner(app); await runner.setup()
+    s = web.TCPSite(runner, "127.0.0.1", 0); await s.start()
+    port = list(runner.addresses)[0][1]
+    try:
+        cfg = ScanConfig(target=f"http://127.0.0.1:{port}", max_duration=1, timeout=30,
+                         profile="passive", crawl=False, max_urls=1, modules=["headers"])
+        r = await asyncio.wait_for(run_scan(cfg), 15)
+        assert r.status.value == "cancelled"
+        assert "time limit" in (r.error or "")
+    finally:
+        await runner.cleanup()
