@@ -15,7 +15,10 @@ from fsv import __version__, BANNER
 from fsv.config import MODULES_ENABLED
 from fsv.core.models import ScanConfig
 from fsv.core import engine, database as db
-from fsv.core.report import generate_markdown, generate_json
+from fsv.core.report import (
+    generate_markdown, generate_json, generate_html,
+    generate_sarif, generate_remediation_plan,
+)
 
 console = Console()
 
@@ -50,7 +53,8 @@ def cli(ctx):
 @click.option("--threads", default=10, help="Concurrency.")
 @click.option("--timeout", default=10, help="Per-request timeout (seconds).")
 @click.option("--modules", default="", help="Comma-separated module list (default: all).")
-@click.option("-o", "--output", default="", help="Write report to file (.md or .json).")
+@click.option("-o", "--output", default="",
+              help="Write report to file (.md / .json / .html / .sarif).")
 @click.option("--quiet", is_flag=True, help="Suppress live progress.")
 def scan(target, authorize, profile, no_crawl, max_urls, depth, threads, timeout, modules, output, quiet):
     """Run a vulnerability scan against TARGET."""
@@ -83,7 +87,14 @@ def scan(target, authorize, profile, no_crawl, max_urls, depth, threads, timeout
     _print_findings(result)
 
     if output:
-        content = generate_json(result) if output.endswith(".json") else generate_markdown(result)
+        if output.endswith(".json"):
+            content = generate_json(result)
+        elif output.endswith((".html", ".htm")):
+            content = generate_html(result)
+        elif output.endswith(".sarif"):
+            content = generate_sarif(result)
+        else:
+            content = generate_markdown(result)
         with open(output, "w", encoding="utf-8") as f:
             f.write(content)
         console.print(f"\n[green]✓[/] Report written to [bold]{output}[/]")
@@ -136,6 +147,12 @@ def _print_summary(result):
     )
     console.print(counts)
 
+    cov = result.owasp_coverage
+    if cov:
+        console.print("\n[bold]OWASP Top 10 (2021) coverage[/]")
+        for cat, n in list(cov.items())[:10]:
+            console.print(f"  [grey70]{n:>2}×[/] {cat}")
+
 
 def _print_findings(result):
     if not result.findings:
@@ -179,15 +196,34 @@ def list_scans(limit):
 
 @cli.command()
 @click.argument("scan_id")
-@click.option("--json", "as_json", is_flag=True, help="Output JSON instead of Markdown.")
-def report(scan_id, as_json):
+@click.option("--json", "as_json", is_flag=True, help="Output JSON (shortcut for --format json).")
+@click.option("--format", "fmt", type=click.Choice(["markdown", "json", "html", "sarif"]),
+              default="markdown", help="Report format.")
+def report(scan_id, as_json, fmt):
     """Print the full report for a scan."""
     result = asyncio.run(db.get_scan(scan_id))
     if result is None:
         console.print("[red]Scan not found.[/]")
         sys.exit(1)
-    content = generate_json(result) if as_json else generate_markdown(result)
+    if as_json:
+        fmt = "json"
+    content = {
+        "json":  generate_json,
+        "html":  generate_html,
+        "sarif": generate_sarif,
+    }.get(fmt, generate_markdown)(result)
     click.echo(content)
+
+
+@cli.command()
+@click.argument("scan_id")
+def plan(scan_id):
+    """Print a prioritized remediation plan for a scan."""
+    result = asyncio.run(db.get_scan(scan_id))
+    if result is None:
+        console.print("[red]Scan not found.[/]")
+        sys.exit(1)
+    click.echo(generate_remediation_plan(result))
 
 
 @cli.command()

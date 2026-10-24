@@ -53,7 +53,15 @@ class ScanProfile(str, Enum):
 
 
 class Finding(BaseModel):
-    """A single vulnerability or informational finding."""
+    """A single vulnerability or informational finding.
+
+    Beyond the raw detection (title/severity/where), each finding is enriched by
+    the knowledge base with the context a reader needs to act on it:
+      • impact            — what the weakness triggers / what an attacker gains
+      • attack_scenario   — a concrete, step-by-step abuse story
+      • owasp             — the OWASP Top-10 (2021) category
+      • remediation_steps — an ordered, actionable fix list
+    """
     id:             str       = ""
     title:          str
     severity:       Severity
@@ -64,14 +72,30 @@ class Finding(BaseModel):
     recommendation: str       = ""
     references:     list[str] = []
     cvss_score:     float | None = None
+    cvss_vector:    str | None   = None
     cwe:            str | None   = None
     parameter:      str | None   = None
     confidence:     Confidence   = Confidence.FIRM
     extra:          dict[str, Any] = {}
+    # ── enrichment (filled by core.knowledge.enrich) ──────────────────────
+    impact:            str       = ""
+    attack_scenario:   str       = ""
+    owasp:             str       = ""
+    remediation_steps: list[str] = []
+    tags:              list[str] = []
+    detected_at:       str       = ""
 
     def model_post_init(self, __context: Any) -> None:
         if not self.id:
             self.id = str(uuid.uuid4())[:8]
+
+    @property
+    def location(self) -> str:
+        """Human-readable 'where it was found' string."""
+        loc = self.url
+        if self.parameter:
+            loc += f"  (parameter: {self.parameter})"
+        return loc
 
 
 class ScanConfig(BaseModel):
@@ -183,6 +207,33 @@ class ScanResult(BaseModel):
         if s >= 3:                             return "A"
         return "A+"
 
+    @property
+    def owasp_coverage(self) -> dict[str, int]:
+        """Count of findings per OWASP Top-10 (2021) category."""
+        cov: dict[str, int] = {}
+        for f in self.findings:
+            cat = getattr(f, "owasp", "") or "Uncategorized"
+            cov[cat] = cov.get(cat, 0) + 1
+        return dict(sorted(cov.items(), key=lambda kv: -kv[1]))
+
+    @property
+    def category_counts(self) -> dict[str, int]:
+        """Count of findings per module (where they came from)."""
+        cov: dict[str, int] = {}
+        for f in self.findings:
+            cov[f.module] = cov.get(f.module, 0) + 1
+        return dict(sorted(cov.items(), key=lambda kv: -kv[1]))
+
+    def top_findings(self, n: int = 5) -> list["Finding"]:
+        """The n highest-priority findings (severity × confidence)."""
+        sev = {Severity.CRITICAL: 500, Severity.HIGH: 200, Severity.MEDIUM: 70,
+               Severity.LOW: 20, Severity.INFO: 5}
+        conf = {Confidence.CERTAIN: 3, Confidence.FIRM: 2, Confidence.TENTATIVE: 1}
+        return sorted(
+            self.findings,
+            key=lambda f: -(sev.get(f.severity, 5) * conf.get(f.confidence, 2)),
+        )[:n]
+
     def summary_dict(self) -> dict:
         return {
             "scan_id":     self.scan_id,
@@ -197,6 +248,8 @@ class ScanResult(BaseModel):
             "grade":       self.grade,
             "profile":     self.profile,
             "stats":       self.stats,
+            "owasp_coverage":  self.owasp_coverage,
+            "category_counts": self.category_counts,
             "counts": {
                 "critical": self.critical_count,
                 "high":     self.high_count,

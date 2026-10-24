@@ -20,6 +20,7 @@ from fsv.core.models import (
 )
 from fsv.core import database as db
 from fsv.core import registry
+from fsv.core import knowledge
 from fsv.core.http_client import HTTPClient
 
 
@@ -195,7 +196,13 @@ async def run_scan(
             if scan_id in _cancelled:
                 raise asyncio.CancelledError("Scan cancelled by user")
 
-        # Deduplicate findings
+        # Enrich every finding with knowledge-base context (impact, attack
+        # scenario, OWASP category, remediation steps, references), then dedup.
+        for f in result.findings:
+            try:
+                knowledge.enrich(f)
+            except Exception:
+                pass
         result.findings = _deduplicate(result.findings)
 
         # Sort by severity
@@ -217,6 +224,11 @@ async def run_scan(
     except asyncio.CancelledError:
         result.status      = ScanStatus.CANCELLED
         result.finished_at = datetime.now(timezone.utc).isoformat()
+        for f in result.findings:
+            try:
+                knowledge.enrich(f)
+            except Exception:
+                pass
         result.findings    = _deduplicate(result.findings)
         _emit("cancelled", 0, 0, "Scan cancelled")
 

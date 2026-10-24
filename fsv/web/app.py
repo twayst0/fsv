@@ -19,7 +19,10 @@ from fsv import __version__
 from fsv.config import WEB_HOST, WEB_PORT, MODULES_ENABLED
 from fsv.core.models import ScanConfig
 from fsv.core import engine, database as db
-from fsv.core.report import generate_markdown, generate_json
+from fsv.core.report import (
+    generate_markdown, generate_json, generate_html,
+    generate_sarif, generate_remediation_plan,
+)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -201,6 +204,30 @@ async def api_report_json(scan_id: str) -> PlainTextResponse:
     if result is None:
         raise HTTPException(404, "Scan not found")
     return PlainTextResponse(generate_json(result), media_type="application/json")
+
+
+@app.get("/api/scan/{scan_id}/report.html", response_class=HTMLResponse)
+async def api_report_html(scan_id: str) -> str:
+    result = await db.get_scan(scan_id)
+    if result is None:
+        raise HTTPException(404, "Scan not found")
+    return generate_html(result)
+
+
+@app.get("/api/scan/{scan_id}/report.sarif")
+async def api_report_sarif(scan_id: str) -> PlainTextResponse:
+    result = await db.get_scan(scan_id)
+    if result is None:
+        raise HTTPException(404, "Scan not found")
+    return PlainTextResponse(generate_sarif(result), media_type="application/json")
+
+
+@app.get("/api/scan/{scan_id}/plan.md", response_class=PlainTextResponse)
+async def api_plan_md(scan_id: str) -> str:
+    result = await db.get_scan(scan_id)
+    if result is None:
+        raise HTTPException(404, "Scan not found")
+    return generate_remediation_plan(result)
 
 
 @app.websocket("/ws/{scan_id}")

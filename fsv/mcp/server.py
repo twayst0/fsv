@@ -20,20 +20,32 @@ from mcp.server.mcpserver import MCPServer
 
 from fsv import __version__
 from fsv.core.models import ScanConfig, ScanProfile
-from fsv.core import engine, database as db, registry
-from fsv.core.report import generate_markdown, generate_json
+from fsv.core import engine, database as db, registry, knowledge
+from fsv.core.report import (
+    generate_markdown, generate_json, generate_html,
+    generate_sarif, generate_remediation_plan,
+)
 
 
 mcp = MCPServer(
     "fsv",
     instructions=(
-        "FSV is a defensive web vulnerability scanner (OWASP-ZAP/Nikto class). "
-        "Only scan targets the user owns or is explicitly authorized to test. "
-        "Before any active scan, confirm authorization with the user, then pass "
-        "authorized=true. Prefer fsv_quick_check / profile='passive' for a safe "
-        "first look; use profile='balanced' or 'aggressive' only with clear "
-        "authorization. Every finding carries a severity, CWE, confidence and "
-        "remediation — summarize those for the user, don't produce exploits."
+        "FSV is a defensive web vulnerability scanner (OWASP-ZAP/Nikto class) with 28 "
+        "modules covering injection (XSS/SQLi/SSTI), access control (CSRF/open-redirect/"
+        "host-header), crypto/TLS, security misconfiguration (headers/CORS/cookies/cache/"
+        "SRI/forms), information exposure (sensitive files/secrets/API specs), and "
+        "vulnerable-component detection (version→CVE heuristics).\n\n"
+        "AUTHORIZATION: Only scan targets the user owns or is explicitly authorized to "
+        "test. Before any active scan, confirm authorization with the user, then pass "
+        "authorized=true. Prefer fsv_quick_check / profile='passive' for a safe first "
+        "look (no payloads sent). Use 'balanced' (default) for safe active checks and "
+        "'aggressive' (adds time-based SQLi probes and higher rate) only with clear "
+        "authorization.\n\n"
+        "REPORTING: Every finding carries severity, CWE, OWASP category, confidence, the "
+        "exact location, an IMPACT (what it triggers), an ATTACK SCENARIO (how it is "
+        "abused), and ordered REMEDIATION steps. Summarize those for the user and help "
+        "them fix issues — never produce weaponized exploits. Use fsv_remediation_plan "
+        "for a prioritized fix list and fsv_export_report for md/html/json/sarif output."
     ),
 )
 
@@ -51,9 +63,13 @@ def _findings_payload(result) -> dict:
                 "parameter":      f.parameter,
                 "cwe":            f.cwe,
                 "cvss_score":     f.cvss_score,
+                "owasp":          f.owasp,
                 "description":    f.description,
+                "impact":         f.impact,
+                "attack_scenario":   f.attack_scenario,
                 "evidence":       f.evidence,
                 "recommendation": f.recommendation,
+                "remediation_steps": f.remediation_steps,
                 "references":     f.references,
             }
             for f in result.findings
@@ -238,6 +254,11 @@ async def fsv_list_modules() -> str:
         "host_header_injection":"Host header injection (redirect/cache poisoning)",
         "jwt_analysis":         "JWT weaknesses (alg:none, weak HMAC, sensitive claims)",
         "ssti":                 "Server-Side Template Injection (benign math marker)",
+        "sri":                  "Third-party scripts/styles loaded without Subresource Integrity",
+        "cache_control":        "Sensitive responses cacheable (missing no-store/private)",
+        "form_security":        "Credential forms over HTTP/GET, password autocomplete",
+        "api_discovery":        "Exposed OpenAPI/Swagger/GraphQL/REST specs + endpoint enumeration",
+        "cve_matcher":          "Version→known-CVE heuristics for outdated components",
     }
     out = {}
     for name, desc in descriptions.items():
@@ -255,6 +276,122 @@ async def fsv_list_modules() -> str:
             "aggressive": "all modules, higher rate & concurrency",
         },
         "modules": out,
+    }, indent=2, ensure_ascii=False)
+
+
+@mcp.tool(
+    description=(
+        "Run a scan with an explicit module list (e.g. ['headers','ssl','cors','sri']). "
+        "Use when the user wants to focus on specific vulnerability classes rather than a "
+        "full profile scan. Pass authorized=true after the user confirms authorization."
+    )
+)
+async def fsv_targeted_scan(
+    target: str,
+    authorized: bool,
+    modules: list[str],
+    crawl: bool = False,
+    max_urls: int = 10,
+) -> str:
+    """Scan only the named modules."""
+    await db.init_db()
+    if not authorized:
+        return _auth_error()
+    config = ScanConfig(target=target, modules=list(modules or []), crawl=crawl,
+                        max_urls=max_urls, profile=ScanProfile.BALANCED)
+    result = await engine.run_scan(config)
+    return json.dumps(_findings_payload(result), indent=2, ensure_ascii=False)
+
+
+@mcp.tool(
+    description=(
+        "Return a prioritized remediation plan for a completed scan: findings ranked by "
+        "severity × confidence, de-duplicated into concrete actions, each with where it "
+        "occurs and ordered fix steps. Ideal for handing the user a do-this-first checklist."
+    )
+)
+async def fsv_remediation_plan(scan_id: str) -> str:
+    """Prioritized fix plan (Markdown)."""
+    await db.init_db()
+    result = await db.get_scan(scan_id)
+    if result is None:
+        return "Scan not found."
+    return generate_remediation_plan(result)
+
+
+@mcp.tool(
+    description=(
+        "Export a completed scan's report in a chosen format: 'markdown' (default), "
+        "'html' (self-contained, shareable), 'json' (full structured result), or 'sarif' "
+        "(SARIF 2.1.0 for CI / code-scanning ingestion)."
+    )
+)
+async def fsv_export_report(scan_id: str, format: str = "markdown") -> str:
+    """Report in markdown/html/json/sarif."""
+    await db.init_db()
+    result = await db.get_scan(scan_id)
+    if result is None:
+        return "Scan not found."
+    fmt = (format or "markdown").lower()
+    if fmt in ("html", "htm"):
+        return generate_html(result)
+    if fmt == "json":
+        return generate_json(result)
+    if fmt == "sarif":
+        return generate_sarif(result)
+    return generate_markdown(result)
+
+
+@mcp.tool(
+    description=(
+        "Get the full detail of a single finding (by its short id or exact title) from a "
+        "scan: location, impact, attack scenario, evidence, CWE/OWASP, and step-by-step "
+        "remediation. Use to drill into one issue the user asks about."
+    )
+)
+async def fsv_finding_detail(scan_id: str, finding: str) -> str:
+    """Deep-dive on one finding."""
+    await db.init_db()
+    result = await db.get_scan(scan_id)
+    if result is None:
+        return json.dumps({"error": "scan not found"}, indent=2)
+    needle = (finding or "").lower()
+    for f in result.findings:
+        if f.id == finding or needle and needle in f.title.lower():
+            return json.dumps({
+                "id": f.id, "title": f.title, "severity": f.severity.value,
+                "confidence": f.confidence.value if hasattr(f.confidence, "value") else str(f.confidence),
+                "location": f.location, "url": f.url, "parameter": f.parameter,
+                "module": f.module, "cwe": f.cwe, "cwe_url": knowledge.cwe_url(f.cwe),
+                "owasp": f.owasp, "cvss_score": f.cvss_score,
+                "description": f.description, "impact": f.impact,
+                "attack_scenario": f.attack_scenario, "evidence": f.evidence,
+                "remediation_steps": f.remediation_steps,
+                "recommendation": f.recommendation, "references": f.references,
+            }, indent=2, ensure_ascii=False)
+    return json.dumps({"error": "finding not found",
+                       "available": [f"{f.id}: {f.title}" for f in result.findings]},
+                      indent=2, ensure_ascii=False)
+
+
+@mcp.tool(
+    description=(
+        "Return the OWASP Top 10 (2021) coverage of a completed scan — how many findings "
+        "fall into each category — plus the overall risk score and grade. Useful for a "
+        "compliance-style summary."
+    )
+)
+async def fsv_owasp_coverage(scan_id: str) -> str:
+    """OWASP Top-10 mapping for a scan."""
+    await db.init_db()
+    result = await db.get_scan(scan_id)
+    if result is None:
+        return json.dumps({"error": "scan not found"}, indent=2)
+    return json.dumps({
+        "scan_id": result.scan_id, "target": result.target,
+        "risk_score": result.risk_score, "grade": result.grade,
+        "owasp_coverage": result.owasp_coverage,
+        "category_counts": result.category_counts,
     }, indent=2, ensure_ascii=False)
 
 

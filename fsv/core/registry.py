@@ -28,6 +28,8 @@ META: dict[str, dict[str, str]] = {
     "graphql_introspection":{"scope": "site", "category": "passive"},
     "dir_listing":          {"scope": "site", "category": "passive"},
     "paths":                {"scope": "site", "category": "passive"},
+    "api_discovery":        {"scope": "site", "category": "passive"},
+    "cve_matcher":          {"scope": "site", "category": "passive"},
     # ── per-URL passive ──
     "headers":              {"scope": "url",  "category": "passive"},
     "cookies":              {"scope": "url",  "category": "passive"},
@@ -36,6 +38,9 @@ META: dict[str, dict[str, str]] = {
     "mixed_content":        {"scope": "url",  "category": "passive"},
     "csrf":                 {"scope": "url",  "category": "passive"},
     "jwt_analysis":         {"scope": "url",  "category": "passive"},
+    "sri":                  {"scope": "url",  "category": "passive"},
+    "cache_control":        {"scope": "url",  "category": "passive"},
+    "form_security":        {"scope": "url",  "category": "passive"},
     # ── per-URL active (send payloads) ──
     "xss":                  {"scope": "url",  "category": "active"},
     "sqli":                 {"scope": "url",  "category": "active"},
@@ -71,6 +76,11 @@ def load_registry() -> dict[str, type]:
     from fsv.modules.host_header          import HostHeaderScanner
     from fsv.modules.jwt_analysis         import JWTScanner
     from fsv.modules.ssti_detection       import SSTIScanner
+    from fsv.modules.sri                  import SRIScanner
+    from fsv.modules.cache_control        import CacheControlScanner
+    from fsv.modules.form_security        import FormSecurityScanner
+    from fsv.modules.api_discovery        import APIDiscoveryScanner
+    from fsv.modules.cve_matcher          import CVEMatcherScanner
     classes = [
         HeadersScanner, SSLScanner, XSSScanner, SQLiScanner, CORSScanner,
         CookieScanner, CSRFScanner, OpenRedirectScanner, TechScanner,
@@ -78,6 +88,8 @@ def load_registry() -> dict[str, type]:
         HTTPMethodsScanner, DNSSecurityScanner, DirListingScanner,
         MixedContentScanner, SubdomainScanner, SecurityTxtScanner,
         WAFScanner, GraphQLScanner, HostHeaderScanner, JWTScanner, SSTIScanner,
+        SRIScanner, CacheControlScanner, FormSecurityScanner,
+        APIDiscoveryScanner, CVEMatcherScanner,
     ]
     return {c.name: c for c in classes}
 
