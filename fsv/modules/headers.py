@@ -1,5 +1,8 @@
 """FSV Module — HTTP Security Headers"""
 
+import re
+from urllib.parse import urlparse
+
 from fsv.core.scanner import BaseScanner
 from fsv.core.models import Finding, Severity
 from fsv.config import SECURITY_HEADERS
@@ -11,15 +14,31 @@ class HeadersScanner(BaseScanner):
     scope       = "url"
     description = "Missing/weak HTTP security headers (HSTS, CSP, X-Frame-Options)"
 
+    def _applies(self, rule: str, url: str, headers: dict, set_cookies: list[str]) -> bool:
+        if rule == "https":
+            return urlparse(url).scheme == "https"
+        ctype = (self._header(headers, "Content-Type") or "").lower()
+        if rule == "html":
+            return "html" in ctype
+        if rule == "sensitive":
+            cfg = self.scan_config
+            personal = bool(set_cookies) or bool(cfg.cookies) or any(
+                h.lower() in ("authorization", "cookie") for h in cfg.headers)
+            return personal and "html" in ctype
+        return True
+
     async def scan(self, url: str) -> list[Finding]:
-        status, headers, _ = await self.fetch(url)
-        if status == -1:
+        resp = await self.fetch_response(url)
+        if not resp.ok:
             return []
+        headers = resp.headers
 
         findings: list[Finding] = []
 
         # ── Missing security headers ──────────────────────
         for header_name, meta in SECURITY_HEADERS.items():
+            if not self._applies(meta.get("applies", "any"), resp.url or url, headers, resp.set_cookies):
+                continue
             value = self._header(headers, header_name)
             if value is None:
                 findings.append(Finding(
@@ -36,6 +55,23 @@ class HeadersScanner(BaseScanner):
                     references     = ["https://owasp.org/www-project-secure-headers/"],
                     cwe            = "CWE-693",
                 ))
+
+        # ── Legacy XSS auditor switched on ────────────────
+        xxp = self._header(headers, "X-XSS-Protection")
+        if xxp and not xxp.strip().startswith("0"):
+            findings.append(Finding(
+                title          = "Legacy X-XSS-Protection Filter Enabled",
+                severity       = Severity.INFO,
+                url            = url,
+                module         = self.name,
+                description    = (
+                    "The XSS auditor this header controls has been removed from every current browser; "
+                    "where it still exists it has been abused to leak data cross-site. It adds no protection."),
+                evidence       = f"X-XSS-Protection: {xxp}",
+                recommendation = "Send `X-XSS-Protection: 0` (or drop it) and rely on a Content-Security-Policy.",
+                references     = ["https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-XSS-Protection"],
+                cwe            = "CWE-693",
+            ))
 
         # ── Server header leakage ─────────────────────────
         server = self._header(headers, "Server")
@@ -123,7 +159,7 @@ class HeadersScanner(BaseScanner):
                     ],
                     cwe            = "CWE-1021",
                 ))
-            if "*" in csp and "default-src *" in csp.replace(" ", ""):
+            if re.search(r"(?:^|;)\s*default-src\s+(?:[^;]*\s)?\*(?:\s|;|$)", csp):
                 findings.append(Finding(
                     title          = "CSP Wildcard Source Detected",
                     severity       = Severity.HIGH,

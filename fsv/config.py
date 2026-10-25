@@ -124,9 +124,6 @@ SENSITIVE_PATHS = [
     "/.htpasswd",
     "/web.config",
     "/crossdomain.xml",
-    "/robots.txt",
-    "/sitemap.xml",
-    "/.well-known/security.txt",
     "/server-status",
     "/server-info",
     "/.DS_Store",
@@ -149,46 +146,47 @@ SENSITIVE_PATHS = [
 ]
 
 # ── Security headers to check ─────────────────────────────
+# `applies`: "https" → only meaningful on HTTPS responses (HSTS is ignored over HTTP);
+#            "html"  → document-level policy, irrelevant on JSON/image/API responses;
+#            "sensitive" → only where the response is personal (sets a cookie / authenticated scan).
+# X-Frame-Options is owned by the `clickjacking` module (which also accepts CSP frame-ancestors);
+# X-XSS-Protection is deliberately absent: modern guidance is to omit it or send `0`.
 SECURITY_HEADERS = {
     "Strict-Transport-Security": {
         "desc": "HTTP Strict Transport Security (HSTS)",
-        "severity": "high",
-        "recommendation": "Add: Strict-Transport-Security: max-age=31536000; includeSubDomains; preload",
+        "severity": "medium",
+        "applies": "https",
+        "recommendation": "Add: Strict-Transport-Security: max-age=31536000; includeSubDomains",
     },
     "Content-Security-Policy": {
         "desc": "Content Security Policy (CSP)",
-        "severity": "high",
-        "recommendation": "Define a strict CSP to prevent XSS: Content-Security-Policy: default-src 'self'",
-    },
-    "X-Frame-Options": {
-        "desc": "Clickjacking protection",
         "severity": "medium",
-        "recommendation": "Add: X-Frame-Options: DENY  (or use CSP frame-ancestors)",
+        "applies": "html",
+        "recommendation": "Define a strict CSP to prevent XSS: Content-Security-Policy: default-src 'self'",
     },
     "X-Content-Type-Options": {
         "desc": "MIME-type sniffing protection",
-        "severity": "medium",
+        "severity": "low",
+        "applies": "any",
         "recommendation": "Add: X-Content-Type-Options: nosniff",
     },
     "Referrer-Policy": {
         "desc": "Referrer information leakage control",
-        "severity": "low",
+        "severity": "info",
+        "applies": "html",
         "recommendation": "Add: Referrer-Policy: strict-origin-when-cross-origin",
     },
     "Permissions-Policy": {
         "desc": "Browser feature permissions control",
-        "severity": "low",
-        "recommendation": "Add: Permissions-Policy: geolocation=(), microphone=(), camera=()",
-    },
-    "X-XSS-Protection": {
-        "desc": "Legacy XSS filter (deprecated — use CSP instead)",
         "severity": "info",
-        "recommendation": "Add: X-XSS-Protection: 0  (disabled is correct; rely on CSP)",
+        "applies": "html",
+        "recommendation": "Add: Permissions-Policy: geolocation=(), microphone=(), camera=()",
     },
     "Cache-Control": {
         "desc": "Caching behavior for sensitive pages",
         "severity": "low",
-        "recommendation": "Add: Cache-Control: no-store for sensitive pages",
+        "applies": "sensitive",
+        "recommendation": "Add: Cache-Control: no-store for pages that show personal data",
     },
 }
 

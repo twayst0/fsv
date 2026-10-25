@@ -9,6 +9,7 @@ Commit your scan settings next to your code instead of a 200-character command:
     max_urls  = 100
     depth     = 3
     exclude   = ["/admin/*", "/logout"]
+    seeds     = ["/app/dashboard"]   # pages no link points to (JS-only routes, deep links)
     max_time  = 900
     fail_on   = "high"
     baseline  = ".fsv-baseline.json"
@@ -31,7 +32,7 @@ SCAN_KEYS: dict[str, tuple[type, ...]] = {
     "profile": (str,), "crawl": (bool,), "max_urls": (int,), "depth": (int,), "threads": (int,),
     "timeout": (int,), "rate": (int, float), "modules": (list,), "exclude": (list,),
     "headers": (dict,), "cookies": (dict,), "tags": (list,), "robots": (bool,), "max_time": (int,),
-    "fail_on": (str,), "baseline": (str,), "ct_logs": (bool,), "external": (bool,),
+    "fail_on": (str,), "baseline": (str,), "ct_logs": (bool,), "external": (bool,), "seeds": (list,),
 }
 _ENV = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 

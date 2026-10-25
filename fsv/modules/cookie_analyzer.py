@@ -9,9 +9,13 @@ import re
 
 # session/auth-looking cookie names ("id" alone matched far too much before)
 _SENSITIVE_NAME = re.compile(
-    r"(sess|auth|token|jwt|csrf|xsrf|remember|login|(^|[_\-.])sid($|[_\-.])|^id$)",
+    r"(sess|auth|token|jwt|remember|login|(^|[_\-.])sid($|[_\-.])|^id$)",
     re.IGNORECASE,
 )
+# Anti-CSRF tokens (Django `csrftoken`, Angular/Laravel `XSRF-TOKEN`, `_csrf` …). In the
+# double-submit pattern the page's own JavaScript MUST read them, so HttpOnly is wrong advice,
+# and stealing one gains nothing without the victim's session. Not a session cookie.
+_CSRF_NAME = re.compile(r"(csrf|xsrf)", re.IGNORECASE)
 
 
 class CookieScanner(BaseScanner):
@@ -35,7 +39,8 @@ class CookieScanner(BaseScanner):
             attrs  = {p.split("=", 1)[0].strip().lower(): (p.split("=", 1)[1].strip() if "=" in p else "")
                       for p in parts[1:]}
 
-            is_secure_name = bool(_SENSITIVE_NAME.search(name))
+            is_csrf = bool(_CSRF_NAME.search(name))
+            is_secure_name = bool(_SENSITIVE_NAME.search(name)) and not is_csrf
 
             # Missing Secure flag
             if "secure" not in flags:
@@ -60,8 +65,8 @@ class CookieScanner(BaseScanner):
                     cvss_score  = 5.9,
                 ))
 
-            # Missing HttpOnly flag
-            if "httponly" not in flags:
+            # Missing HttpOnly flag (anti-CSRF cookies are meant to be script-readable)
+            if "httponly" not in flags and not is_csrf:
                 sev = Severity.HIGH if is_secure_name else Severity.LOW
                 findings.append(Finding(
                     title       = f"Cookie Missing HttpOnly Flag: `{name}`",

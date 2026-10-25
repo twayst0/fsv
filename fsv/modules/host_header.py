@@ -20,7 +20,9 @@ class HostHeaderScanner(BaseScanner):
         status, headers, body = await self.fetch(
             url, headers={"Host": EVIL}, allow_redirects=False
         )
-        if status == -1:
+        if status == -1 or status >= 400:
+            # The app rejected the forged Host (Django's DisallowedHost is a 400). A debug error page
+            # may still echo it, but nothing was trusted — that is the debug_mode module's finding.
             return []
 
         findings: list[Finding] = []

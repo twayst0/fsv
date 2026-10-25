@@ -91,6 +91,7 @@ _EXTRA: list[tuple[str, str]] = [
     ("js_analysis", "JSAnalysisScanner"),
     ("js_libs", "JSLibsScanner"),
     ("cloud_storage", "CloudStorageScanner"),
+    ("debug_mode", "DebugModeScanner"),
 ]
 
 

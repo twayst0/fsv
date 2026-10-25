@@ -1,7 +1,7 @@
 """FSV Module — CSRF Vulnerability Detection"""
 
 from __future__ import annotations
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
 
 from fsv.core.scanner import BaseScanner
@@ -22,9 +22,11 @@ class CSRFScanner(BaseScanner):
     description = "Missing CSRF protection on POST forms"
 
     async def scan(self, url: str) -> list[Finding]:
-        status, headers, body = await self.fetch(url)
+        resp = await self.fetch_response(url)
+        status, headers, body = resp.status, resp.headers, resp.body
         if status == -1 or not body:
             return []
+        page = urlparse(resp.url or url)
 
         findings: list[Finding] = []
 
@@ -44,6 +46,11 @@ class CSRFScanner(BaseScanner):
             # Only check POST forms (GET forms are generally safe for CSRF)
             if method != "post":
                 continue
+            # A form that posts to another site (a "share this" or payment form) carries none of
+            # this site's cookies, so this site's CSRF defences are not involved.
+            dest = urlparse(urljoin(resp.url or url, str(action)))
+            if dest.scheme in ("http", "https") and dest.netloc and dest.netloc != page.netloc:
+                continue
 
             # Look for CSRF token field
             inputs = form.find_all("input")
@@ -56,9 +63,7 @@ class CSRFScanner(BaseScanner):
                     break
 
             # Check for SameSite cookie as an alternative protection
-            set_cookies = [
-                v for k, v in headers.items() if k.lower() == "set-cookie"
-            ]
+            set_cookies = resp.set_cookies
             samesite_protected = any(
                 "samesite=strict" in c.lower() or "samesite=lax" in c.lower()
                 for c in set_cookies
@@ -68,7 +73,7 @@ class CSRFScanner(BaseScanner):
                 form_action = action[:100] if len(str(action)) > 100 else str(action)
                 findings.append(Finding(
                     title       = "CSRF Token Missing in POST Form",
-                    severity    = Severity.HIGH,
+                    severity    = Severity.MEDIUM,
                     url         = url,
                     module      = self.name,
                     description = (

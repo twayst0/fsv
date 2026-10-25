@@ -182,7 +182,7 @@ class ScanConfig(BaseModel):
     def _clamp_rate(cls, v: float) -> float:
         return max(0.5, min(200.0, float(v)))
 
-    @field_validator("exclude_paths", "tags")
+    @field_validator("exclude_paths", "tags", "seed_urls")
     @classmethod
     def _strip_list(cls, v: list[str]) -> list[str]:
         return [s.strip() for s in v if s and s.strip()]

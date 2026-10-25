@@ -35,6 +35,7 @@ from fsv.core import database as db
 from fsv.core import registry
 from fsv.core.correlate import correlate
 from fsv.core import ownership
+from fsv.core import discovery
 from fsv.core.http_client import HTTPClient
 from fsv.core.netsafety import make_connector, make_trace_config, check_target
 
@@ -178,6 +179,8 @@ async def run_scan(
                 )
                 result.urls = urls
                 result.urls_scanned = len(urls)
+                if crawler.discovered:
+                    result.stats["discovered"] = dict(crawler.discovered)
                 _emit("crawl", 1, 1, f"Found {len(urls)} URL(s)")
 
                 # 2) SELECT MODULES
@@ -306,7 +309,8 @@ def _finalize(result: ScanResult, http: HTTPClient | None, started_at: str) -> N
     merged = aggregate_findings(result.findings)
     result.findings = sort_findings(merged + correlate(merged))
     if http is not None:
-        result.stats = http.stats.as_dict()
+        keep = {k: result.stats[k] for k in ("discovered",) if k in result.stats}
+        result.stats = {**http.stats.as_dict(), **keep}
     if result.module_error_samples:
         result.stats["module_error_samples"] = dict(result.module_error_samples)
     if http is not None:
@@ -365,6 +369,71 @@ class Crawler:
         self.origin = f"{p.scheme}://{p.netloc}"
         self.host   = p.netloc.lower()
         self.disallow: list[str] = []
+        self.scripts_seen: set[str] = set()
+        # where crawl seeds came from, beyond <a href> — reported in scan stats
+        self.discovered: dict[str, int] = {}
+
+    def _count(self, source: str, n: int) -> None:
+        if n:
+            self.discovered[source] = self.discovered.get(source, 0) + n
+
+    def _in_scope(self, urls) -> list[str]:
+        out = []
+        for u in urls:
+            full = canonical_url(urljoin(self.origin + "/", u))
+            if same_origin(full, self.host) and not self.excluded(full):
+                out.append(full)
+        return list(dict.fromkeys(out))
+
+    async def _discover(self) -> list[str]:
+        """Seeds from robots.txt, sitemaps and a debug-mode 404 page (all plain GETs)."""
+        seeds: list[str] = []
+        r = await self.http.request(self.origin + "/robots.txt")
+        paths, maps = discovery.robots_entries(r.body) if r.status == 200 else ([], [])
+        found = self._in_scope(paths)
+        self._count("robots.txt", len(found))
+        seeds += found
+
+        queue = list(dict.fromkeys(maps or [self.origin + "/sitemap.xml"]))
+        pages: list[str] = []
+        for sm in queue[:5]:                                  # an index may point to more maps
+            if not same_origin(sm, self.host):
+                continue
+            r = await self.http.request(sm)
+            if r.status != 200:
+                continue
+            got, nested = discovery.sitemap_locs(r.body)
+            pages += got
+            queue += [n for n in nested if n not in queue]
+        found = self._in_scope(pages)
+        self._count("sitemap", len(found))
+        seeds += found
+
+        r = await self.http.request(self.origin + "/fsv-discovery-" + uuid.uuid4().hex[:10])
+        if r.status == 404:
+            found = self._in_scope(discovery.django_debug_routes(r.body))
+            self._count("debug 404 page", len(found))
+            seeds += found
+        return list(dict.fromkeys(seeds))[: self.cfg.max_urls * 2]
+
+    async def _script_routes(self, soup, base: str) -> list[str]:
+        """API paths quoted in same-origin scripts (external and inline)."""
+        paths: list[str] = []
+        for tag in soup.find_all("script"):
+            src = tag.get("src")
+            if not src:
+                paths += discovery.js_routes(tag.string or "")
+                continue
+            full = urljoin(base, src).split("#", 1)[0]
+            if not same_origin(full, self.host) or full in self.scripts_seen or len(self.scripts_seen) >= 40:
+                continue
+            self.scripts_seen.add(full)
+            r = await self.http.request(full)
+            if r.status == 200:
+                paths += discovery.js_routes(r.body)
+        found = self._in_scope(paths)
+        self._count("javascript", len(found))
+        return found
 
     def excluded(self, link: str) -> bool:
         low  = link.lower()
@@ -412,6 +481,7 @@ class Crawler:
             if same_origin(full, self.host) and not self.excluded(full):
                 found.append(full)
         found.extend(self._form_urls(soup, base))
+        found.extend(await self._script_routes(soup, base))
         return list(dict.fromkeys(found))
 
     _FORM_SKIP = {"password", "file", "submit", "button", "image", "reset"}
@@ -456,9 +526,10 @@ class Crawler:
         start = [canonical_url(cfg.target)]
         start += [canonical_url(urljoin(cfg.target, s)) for s in cfg.seed_urls]
         start = [u for u in dict.fromkeys(start) if same_origin(u, self.host)]
+        extra = [u for u in await self._discover() if u not in start] if cfg.crawl else []
 
-        seen: set[str] = set(start)
-        queue: deque[tuple[str, int]] = deque((u, 0) for u in start)
+        seen: set[str] = set(start) | set(extra)
+        queue: deque[tuple[str, int]] = deque([(u, 0) for u in start] + [(u, 1) for u in extra])
         out: list[str] = []
 
         while queue and len(out) < cfg.max_urls:

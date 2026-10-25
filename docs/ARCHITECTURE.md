@@ -41,7 +41,7 @@
 fsv/core/      engine · scanner base · registry · http_client · dnsutil · netsafety · ownership
                models · taxonomy (CWE→OWASP) · correlate · diff · baseline · settings · fixes · report · database
                content (page/script collection) · secrets · eol · ct
-fsv/modules/   one file per check (30)
+fsv/modules/   one file per check (31)
 fsv/web/       FastAPI + request guard + dashboard (static/)
 fsv/mcp/       MCP server (stdio)
 fsv/cli.py     command line

@@ -118,6 +118,8 @@ def _validate(target: str) -> tuple[str | None, str | None]:
         "use_ct_logs=true also asks Certificate Transparency logs (crt.sh) for subdomains "
         "(sends the domain to a third party — only with the user's consent); "
         "allow_external=false skips modules that contact hosts other than the target. "
+        "seed_urls adds same-origin pages no link points to; headers/cookies make it an authenticated "
+        "scan (use a test account, never a real user's session). "
         "Only scan targets the user owns or is authorized to test; pass authorized=true only "
         "after they confirm."
     )
@@ -134,6 +136,9 @@ async def fsv_scan(
     max_minutes: int = 20,
     use_ct_logs: bool = False,
     allow_external: bool = True,
+    seed_urls: list[str] | None = None,
+    headers: dict[str, str] | None = None,
+    cookies: dict[str, str] | None = None,
 ) -> str:
     """Full vulnerability scan with selectable profile (time-boxed, default 20 min)."""
     if not authorized:
@@ -151,6 +156,7 @@ async def fsv_scan(
         exclude_paths=list(exclude_paths or []),
         max_duration=max(0, max_minutes) * 60,
         use_ct_logs=use_ct_logs, allow_external=allow_external,
+        seed_urls=list(seed_urls or []), headers=dict(headers or {}), cookies=dict(cookies or {}),
     )
     result = await engine.run_scan(config)
     return _dump(_findings_payload(result))

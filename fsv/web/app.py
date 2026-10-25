@@ -95,6 +95,7 @@ class ScanRequest(BaseModel):
     rate_per_sec: float = 20.0
     profile:  str       = "balanced"
     exclude_paths: list[str] = []
+    seed_urls: list[str] = []     # same-origin pages no link points to
     tags:     list[str] = []
     respect_robots: bool = False
     max_duration: int   = 0       # seconds, 0 = unlimited
@@ -207,7 +208,7 @@ async def api_scan(req: ScanRequest, request: Request) -> JSONResponse:
             target=target, modules=req.modules, crawl=req.crawl, max_urls=req.max_urls,
             depth=req.depth, timeout=req.timeout, threads=req.threads,
             rate_per_sec=req.rate_per_sec, profile=prof, exclude_paths=req.exclude_paths,
-            tags=req.tags, respect_robots=req.respect_robots,
+            seed_urls=req.seed_urls, tags=req.tags, respect_robots=req.respect_robots,
             max_duration=req.max_duration, headers=req.headers, cookies=req.cookies,
             use_ct_logs=req.use_ct_logs, allow_external=req.allow_external,
         )

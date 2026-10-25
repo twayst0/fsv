@@ -58,7 +58,15 @@ Pages reference buckets for images, downloads and often **scripts**.
 Elasticsearch, WordPress debug logs and user enumeration. End-of-life PHP / Apache / IIS / OpenSSL / Python / Drupal are
 judged against a **dated** table, so "PHP 8.1" is flagged the day it stops getting fixes.
 
-## 6. Attack paths — `correlation`
+## 6. Debug mode on error pages — `debug_mode`
+A crawler reads pages that work; debug pages only appear when something fails. One request for a path
+that cannot exist shows what the site does with a 404: Django's `DEBUG=True` page (which also lists every
+URL pattern), Rails and Symfony development pages, Laravel Ignition, Express stack traces, ASP.NET detailed
+errors. Two direct checks complete it: Werkzeug's `/console` and Ignition's `/_ignition/health-check`
+(`can_execute_commands: true`, the CVE-2021-3129 precondition). Signatures must all match, so a custom
+404 page that merely mentions "debug" does not fire.
+
+## 7. Attack paths — `correlation`
 Individually "medium" findings that combine into a compromise. FSV reads its own findings (sending nothing more) and adds a
 finding when a chain is *actually present*:
 
@@ -74,6 +82,14 @@ Each chain names its links, tells the story step by step, and states **the cheap
 triaged away (false positive / accepted / fixed), the chain is marked *superseded* and stops counting.
 
 ---
+
+## Coverage: finding the pages first
+Links are only part of a modern site. Before crawling, FSV also reads `robots.txt` paths, sitemaps
+(including sitemap indexes), the URL list a Django debug 404 page discloses, and paths quoted in
+same-origin JavaScript (`fetch('/api/items')`). Discovered paths that read like actions
+(`/labs/start/…`, `/cart/clear`, `…/delete…`) are never requested. Pages nothing links to can be
+added with `--seed` (or `seeds = [...]` in `fsv.toml`). Scan stats show where URLs came from
+(`stats.discovered`).
 
 ### Honest limits
 * The crawler reads HTML; it does not run JavaScript, so content that only exists after client-side rendering is not discovered.

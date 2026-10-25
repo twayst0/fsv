@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/twayst0/fsv/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/twayst0/fsv/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-3776ab?logo=python&logoColor=white">
-  <img alt="30 modules" src="https://img.shields.io/badge/modules-30-7cf0c0">
+  <img alt="31 modules" src="https://img.shields.io/badge/modules-31-7cf0c0">
   <img alt="detection only" src="https://img.shields.io/badge/mode-detection--only-30c48d">
   <img alt="MCP server" src="https://img.shields.io/badge/MCP-server-8a7cff">
   <img alt="license: personal use" src="https://img.shields.io/badge/license-personal%20use-ff9a42">
@@ -210,9 +210,9 @@ SARIF is uploaded to GitHub code scanning; the HTML report and log are attached 
 Scan results carry an `attack_paths` section so the agent can lead with what matters.
 </details>
 
-## Modules (30)
+## Modules (31)
 
-FSV ships **30 modules** — 24 passive, 6 active. Run `fsv modules` for the live list.
+FSV ships **31 modules** — 25 passive, 6 active. Run `fsv modules` for the live list.
 
 <details>
 <summary><b>The full catalogue</b> &nbsp;<sub>(or run <code>fsv modules</code>)</sub></summary>
@@ -224,6 +224,7 @@ FSV ships **30 modules** — 24 passive, 6 active. Run `fsv modules` for the liv
 | `dns_security` | SPF (10-lookup limit, dead includes, `+all`), DMARC, DKIM key strength, MTA-STS, dead NS/MX, CAA, DNSSEC | passive · site |
 | `js_analysis` | hard-coded credentials, exposed source maps, internal/non-prod hosts in client code | passive · url |
 | `js_libs` | known-vulnerable & end-of-life JavaScript libraries | passive · url |
+| `debug_mode` | framework debug mode in production (Django `DEBUG=True`, Werkzeug console, Rails, Laravel Ignition, Symfony, Express, ASP.NET) — seen on error pages a crawler never visits | passive · site |
 | `paths` | ~100 exposed files/endpoints, each content-validated (`.git`, `.env`, actuator, pprof, tfstate, backups…) | passive · site |
 | `tech` | stack fingerprint + **end-of-life** software from a dated table | passive · site |
 | `headers` · `csp_analyzer` | security headers · deep CSP review | passive |
@@ -239,7 +240,7 @@ FSV ships **30 modules** — 24 passive, 6 active. Run `fsv modules` for the liv
 ## How it works
 
 <p align="center">
-  <img src="docs/assets/pipeline.svg" alt="Pipeline: crawl, 30 modules, aggregate by fingerprint, correlate into attack paths, triage per host, report — shared by CLI, dashboard, MCP agents and the GitHub Action." width="100%">
+  <img src="docs/assets/pipeline.svg" alt="Pipeline: crawl, 31 modules, aggregate by fingerprint, correlate into attack paths, triage per host, report — shared by CLI, dashboard, MCP agents and the GitHub Action." width="100%">
 </p>
 
 One engine, four front doors. Address policy and proof of control live in the engine, so every front door gets them; request guard and token auth belong to the web server. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

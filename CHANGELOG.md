@@ -1,6 +1,13 @@
 # Changelog
 
 ## Unreleased
+**Tested against real applications** (OWASP PyGoat, Django) — these came out of it:
+- New `debug_mode` module (31 modules): Django `DEBUG=True`, Werkzeug console, Rails/Symfony/Laravel Ignition/Express/ASP.NET debug error pages — which only appear on errors, so the crawler never saw them.
+- Crawler discovery: robots.txt paths, sitemaps, Django debug-404 route lists, and API paths in same-origin JavaScript (action-like paths such as `/labs/start/…` are never requested). On PyGoat: 3 → 39 URLs. `--seed` / `seeds` / MCP `seed_urls` for pages nothing links to; MCP scans can now be authenticated (`headers`, `cookies`).
+- False positives removed: anti-CSRF cookies (`csrftoken`, `XSRF-TOKEN`) no longer "missing HttpOnly" or session cookies in attack paths; HSTS not demanded over plain HTTP; CSP/Permissions/Referrer only on HTML; `X-XSS-Protection` no longer demanded (and X-Frame-Options left to `clickjacking`); `Allow: PUT` no longer "dangerous" (TRACE is now verified by echo); open redirect that only bounced back to the site's own login; Host-header "injection" when the app rejected the host with a 400; CSRF on forms posting to another site; `/admin` + `/admin/` reported twice as a "sensitive file"; robots.txt/sitemap reported as exposures; noisy "on line" stack-trace signature; HTML matched as a hard-coded password.
+- Severity calibration: missing CSP/HSTS medium (was high), CSRF token missing medium (was high).
+- `CSP Wildcard Source` check could never fire (spaces were stripped before matching `default-src *`).
+
 **Docs**
 - README redesigned: animated, self-contained SVGs (hero radar, terminal replay, detections, attack-path chain, pipeline) that respect `prefers-reduced-motion`, plus real dashboard screenshots (WebP).
 - `examples/demo_site.py` — a deliberately vulnerable, loopback-only demo target; the README visuals are generated from a real scan of it (`scripts/build_readme_assets.sh [--screenshots]`).

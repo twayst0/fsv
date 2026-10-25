@@ -62,6 +62,8 @@ _ORDER = ["info", "low", "medium", "high", "critical"]
 @click.option("--rate", default=20.0, help="Max requests per second (politeness).")
 @click.option("--modules", default="", help="Comma-separated module list (default: all).")
 @click.option("--exclude", default="", help="Comma-separated path globs to skip, e.g. /admin/*.")
+@click.option("--seed", "seeds", multiple=True,
+              help="Extra same-origin path or URL to start crawling from, e.g. /app/dashboard (repeatable).")
 @click.option("--header", "headers", multiple=True, help="Extra request header 'Name: value' (repeatable).")
 @click.option("--cookie", "cookies", multiple=True, help="Request cookie 'name=value' (repeatable).")
 @click.option("--tag", "tags", multiple=True, help="Label this scan (repeatable).")
@@ -83,7 +85,7 @@ _ORDER = ["info", "low", "medium", "high", "critical"]
 @click.option("-v", "--verbose", is_flag=True, help="Log module errors and engine details to stderr.")
 @click.pass_context
 def scan(ctx, target, authorize, config_path, profile, no_crawl, max_urls, depth, threads, timeout, rate,
-         modules, exclude, headers, cookies, tags, robots, max_time, ct_logs, no_external,
+         modules, exclude, seeds, headers, cookies, tags, robots, max_time, ct_logs, no_external,
          baseline_path, write_baseline, output, fail_on, quiet, verbose):
     """Run a vulnerability scan against TARGET."""
     # -v turns on FSV's own debug logging only — never the DEBUG firehose of third-party libraries
@@ -134,6 +136,7 @@ def scan(ctx, target, authorize, config_path, profile, no_crawl, max_urls, depth
         if not exclude and file_cfg.get("exclude"):
             exclude = ",".join(file_cfg["exclude"])
         tags = tuple(tags) + tuple(file_cfg.get("tags", []))
+        seeds = tuple(seeds) + tuple(file_cfg.get("seeds", []))
         file_headers, file_cookies = file_cfg.get("headers", {}), file_cfg.get("cookies", {})
     else:
         file_headers, file_cookies = {}, {}
@@ -152,6 +155,7 @@ def scan(ctx, target, authorize, config_path, profile, no_crawl, max_urls, depth
         crawl=not no_crawl, max_urls=max_urls, depth=depth, timeout=timeout,
         threads=threads, rate_per_sec=rate, profile=ScanProfile(profile),
         exclude_paths=[p.strip() for p in exclude.split(",") if p.strip()],
+        seed_urls=[s.strip() for s in seeds if s.strip()],
         headers={**file_headers, **_parse_kv(headers, ":")},
         cookies={**file_cookies, **_parse_kv(cookies, "=")},
         tags=list(tags), respect_robots=robots, max_duration=max_time,

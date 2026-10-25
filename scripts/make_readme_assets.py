@@ -210,7 +210,7 @@ def terminal(scan: dict) -> str:
         y += dy
 
     line(f'<text x="{X0}" y="{{Y}}" class="m" font-size="14" style="fill:{C["mut"]}">▶ Scanning <tspan style="fill:#63a8ff">{esc(scan["target"])}</tspan>  (balanced)</text>', t); t += .55
-    line(f'<text x="{X0}" y="{{Y}}" class="m" font-size="14" style="fill:{C["mut"]}">{scan["urls_scanned"]} URLs · 30 modules · {scan["requests"]} requests · {scan["duration_s"]}s</text>', t); t += .7
+    line(f'<text x="{X0}" y="{{Y}}" class="m" font-size="14" style="fill:{C["mut"]}">{scan["urls_scanned"]} URLs · 31 modules · {scan["requests"]} requests · {scan["duration_s"]}s</text>', t); t += .7
     line(f'<text x="{X0}" y="{{Y}}" class="m" font-size="14"><tspan style="fill:{C["crit"]};font-weight:700">Risk {esc(scan["grade"])} ({scan["risk_score"]}/100)</tspan>'
          f'<tspan style="fill:{C["crit"]}">   {c["critical"]} critical</tspan><tspan style="fill:{C["high"]}">  {c["high"]} high</tspan>'
          f'<tspan style="fill:{C["med"]}">  {c["medium"]} medium</tspan><tspan style="fill:{C["low"]}">  {c["low"]} low</tspan>'
@@ -336,7 +336,7 @@ def attack_path() -> str:
 
 def pipeline() -> str:
     W, H, T = 1000, 270, 7.2
-    stages = [("Crawl", "same-origin", "cached · polite"), ("30 modules", "site + per-URL", "passive / active"),
+    stages = [("Crawl", "same-origin", "cached · polite"), ("31 modules", "site + per-URL", "passive / active"),
               ("Aggregate", "by fingerprint", "many → 1 issue"), ("Correlate", "attack paths", "links → story"),
               ("Triage", "per host", "FP · accepted"), ("Report", "5 formats", "+ fix packs")]
     n, bw, gap, x0, y0, bh = len(stages), 128, 34, 34, 96, 104
@@ -364,7 +364,7 @@ def pipeline() -> str:
             f'<text x="34" y="70" font-size="14" class="mut">Address policy and proof of control live in the engine, so every front door gets them.</text>'
             + "".join(parts) + pills
             + f'<text x="{34 + 4*150 + 10}" y="{H-41}" font-size="13" class="m faint">← all share the same pipeline</text>')
-    return svg(W, H, "FSV pipeline", "Crawl, 30 modules, aggregate, correlate, triage, report — shared by CLI, dashboard, MCP and the GitHub Action.",
+    return svg(W, H, "FSV pipeline", "Crawl, 31 modules, aggregate, correlate, triage, report — shared by CLI, dashboard, MCP and the GitHub Action.",
                "", body, "".join(css))
 
 

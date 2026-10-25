@@ -40,11 +40,26 @@ PATH_SEVERITY: dict[str, Severity] = {
     "/Dockerfile":         Severity.LOW,
     "/docker-compose.yml": Severity.LOW,
     "/.DS_Store":          Severity.LOW,
-    "/robots.txt":         Severity.INFO,
-    "/sitemap.xml":        Severity.INFO,
-    "/.well-known/security.txt": Severity.INFO,
-    "/crossdomain.xml":    Severity.INFO,
+    "/crossdomain.xml":    Severity.LOW,
+    "/admin":              Severity.LOW,
+    "/admin/":             Severity.LOW,
+    "/administrator":      Severity.LOW,
 }
+
+# Paths whose finding is not "a file that should not exist" — they get their own wording.
+_ADMIN_REC = ("Keep administration off the public Internet: allow it only from a VPN / office IP range, "
+              "or put it behind SSO with MFA. At minimum enforce MFA and rate-limit the login.")
+PATH_TITLES: dict[str, tuple[str, str, str]] = {   # path → (title, description, recommendation)
+    "/admin": ("Admin Interface Publicly Reachable",
+               "An administration interface answers to anyone on the Internet. It is the most attacked "
+               "page of any site: credential stuffing, password spraying and any auth bug land here.",
+               _ADMIN_REC),
+    "/crossdomain.xml": ("Permissive crossdomain.xml (any origin)",
+                         "crossdomain.xml allows every domain. Legacy Flash/Silverlight clients — and some "
+                         "proxies and PDF readers that still honour it — may read authenticated responses cross-origin.",
+                         "Delete crossdomain.xml, or list only the exact domains that need access."),
+}
+PATH_TITLES["/admin/"] = PATH_TITLES["/administrator"] = PATH_TITLES["/admin"]
 
 PATH_CWE: dict[str, str] = {}
 
@@ -60,6 +75,9 @@ PATH_DESCRIPTIONS: dict[str, str] = {
     "/.aws/credentials": "Exposed AWS credentials file would give attackers full cloud infrastructure access.",
     "/id_rsa":           "Exposed private SSH key would allow server login.",
 }
+
+
+_MERGED_TITLES = {t for t, _, _ in PATH_TITLES.values()}
 
 
 class PathScanner(BaseScanner):
@@ -91,7 +109,16 @@ class PathScanner(BaseScanner):
                 if finding:
                     findings.append(finding)
 
-        return findings
+        # `/admin` and `/admin/` (or two backup names served by one catch-all) are one problem.
+        unique: dict[tuple, Finding] = {}
+        for f in findings:
+            # same kind of finding landing on the same final page (redirects followed)
+            key = (f.title, f.extra.get("final")) if f.title in _MERGED_TITLES else (f.url,)
+            if key in unique:
+                unique[key].extra.setdefault("aliases", []).append(urlparse(f.url).path)
+            else:
+                unique[key] = f
+        return list(unique.values())
 
     async def _calibrate(self, base_url: str) -> dict:
         """Detect catch-all/soft-404 behavior."""
@@ -108,7 +135,8 @@ class PathScanner(BaseScanner):
 
     async def _probe(self, base_url: str, path: str, baseline: dict) -> Finding | None:
         target = base_url.rstrip("/") + path
-        status, headers, body = await self.fetch(target)
+        resp = await self.fetch_response(target)
+        status, headers, body = resp.status, resp.headers, resp.body
 
         if status not in (200, 206):
             return None
@@ -142,6 +170,16 @@ class PathScanner(BaseScanner):
 
         sev  = PATH_SEVERITY.get(path, Severity.LOW)
         desc = PATH_DESCRIPTIONS.get(path, f"Sensitive file `{path}` is publicly accessible.")
+        final = urlparse(resp.url or target).path.rstrip("/") or "/"
+
+        if path in PATH_TITLES:
+            title, desc, rec = PATH_TITLES[path]
+            return Finding(
+                title=title, severity=sev, confidence=confidence, url=target, module=self.name,
+                description=desc, recommendation=rec, cwe="CWE-284",
+                evidence=f"HTTP {status} at {target}\nResponse preview:\n{redact_preview(path, body)}",
+                references=["https://owasp.org/www-project-web-security-testing-guide/"],
+                extra={"final": final})
 
         return Finding(
             title       = f"Sensitive File Exposed: `{path}`",
@@ -163,6 +201,7 @@ class PathScanner(BaseScanner):
                 "https://owasp.org/www-project-web-security-testing-guide/",
             ],
             cwe         = PATH_CWE.get(path) or ("CWE-538" if ".git" in path or ".env" in path else "CWE-200"),
+            extra       = {"final": final},
         )
 
 
@@ -224,10 +263,7 @@ VALIDATORS: dict[str, Callable[[str, str], bool]] = {
     "/Dockerfile":       _regex(r"^\s*FROM\s+\S+"),
     "/docker-compose.yml": _regex(r"^\s*services\s*:"),
     "/.travis.yml":       _regex(r"^\s*(language|script|install|dist)\s*:"),
-    "/robots.txt":       _regex(r"^\s*(user-agent|disallow|sitemap)\s*:"),
-    "/sitemap.xml":      _regex(r"<(urlset|sitemapindex)[\s>]", html_ok=True),
-    "/crossdomain.xml":  _regex(r"<cross-domain-policy", html_ok=True),
-    "/.well-known/security.txt": _regex(r"^\s*contact\s*:"),
+    "/crossdomain.xml":  _regex(r"<allow-access-from[^>]*domain\s*=\s*[\"']\*[\"']", html_ok=True),
 }
 
 _BINARY_FILES = ("/actuator/heapdump", "/backup.zip", "/backup.tar.gz", "/backup.tgz", "/site.zip",
