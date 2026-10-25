@@ -79,3 +79,14 @@ def test_readme_local_links_resolve():
         assert os.path.exists(os.path.join(ROOT, target)), f"README links to missing {target}"
     for target in re.findall(r'href="((?:docs/)[^"#]+)', text):
         assert os.path.exists(os.path.join(ROOT, target)), f"README links to missing {target}"
+
+
+def test_mcp_registry_metadata_matches_the_package():
+    import json
+    import fsv
+    d = json.load(open(os.path.join(ROOT, "server.json"), encoding="utf-8"))
+    assert d["version"] == fsv.__version__ and all(p["version"] == fsv.__version__ for p in d["packages"])
+    assert len(d["description"]) <= 100, "the MCP Registry rejects descriptions over 100 characters"
+    pypi_readme = open(os.path.join(ROOT, "docs", "PYPI.md"), encoding="utf-8").read()
+    assert f"mcp-name: {d['name']} " in pypi_readme or f"mcp-name: {d['name']}\n" in pypi_readme \
+        or f"mcp-name: {d['name']} -->" in pypi_readme, "PyPI ownership marker must match server.json"

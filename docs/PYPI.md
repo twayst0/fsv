@@ -4,6 +4,8 @@
 
 # FSV — web security scanner & MCP server
 
+<!-- mcp-name: io.github.twayst0/fsv -->
+
 **For the problems nobody is watching:** dangling DNS and subdomain takeover, orphaned cloud buckets,
 scripts from compromised or expired CDN domains, SPF includes that no longer exist, debug mode left on in
 production, secrets in your JavaScript, end-of-life software — and the **attack paths** that turn small

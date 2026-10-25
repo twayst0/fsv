@@ -1,0 +1,29 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.twayst0/fsv",
+  "title": "FSV — website security scanner",
+  "description": "Scan your own website for vulnerabilities: DNS takeover, compromised CDNs, debug mode and more.",
+  "repository": {
+    "url": "https://github.com/twayst0/fsv",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/twayst0/fsv",
+  "version": "2.2.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "fsv",
+      "version": "2.2.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
+    }
+  ]
+}

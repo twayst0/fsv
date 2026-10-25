@@ -49,6 +49,10 @@ fsv mcp-config --client claude-code     # prints:  claude mcp add fsv -- /path/t
 fsv mcp-config --client claude-desktop  # or cursor · vscode — prints the JSON to paste
 ```
 
+No install at all: with [uv](https://docs.astral.sh/uv/), point any MCP client at `uvx fsv mcp`
+(`{ "command": "uvx", "args": ["fsv", "mcp"] }`). FSV is listed in the
+[official MCP Registry](https://registry.modelcontextprotocol.io) as `io.github.twayst0/fsv`.
+
 Then, in the assistant: *“Use the **security_review** prompt on https://my-shop.example — I own it.”*
 
 <details>

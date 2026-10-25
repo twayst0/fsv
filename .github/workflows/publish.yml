@@ -73,3 +73,43 @@ jobs:
           awk -v v="## $ver" '$0==v{on=1;next} on&&/^## /{exit} on' CHANGELOG.md > notes.md
           printf '\n---\n`pip install fsv==%s`  ·  https://pypi.org/project/fsv/%s/\n' "$ver" "$ver" >> notes.md
           gh release create "v$ver" --target "$GITHUB_SHA" --title "FSV $ver" --notes-file notes.md
+
+  mcp-registry:
+    # List FSV in the official MCP Registry (registry.modelcontextprotocol.io) — clients and MCP
+    # directories discover servers there. Authenticates as this repository via GitHub OIDC, which
+    # proves the io.github.twayst0/* namespace; PyPI ownership is proven by the `mcp-name:` line
+    # in docs/PYPI.md (the package description).
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: server.json carries the version just published
+        run: |
+          ver=$(python3 -c "import re;print(re.search(r'__version__ = \"(.+?)\"', open('fsv/__init__.py').read()).group(1))")
+          python3 - "$ver" <<'PY'
+          import json, sys
+          v = sys.argv[1]; d = json.load(open("server.json"))
+          d["version"] = v
+          for p in d["packages"]:
+              p["version"] = v
+          json.dump(d, open("server.json", "w"), indent=2)
+          PY
+          cat server.json
+      - name: Install mcp-publisher
+        run: |
+          curl -sSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher --help > /dev/null
+      - name: Wait until PyPI serves the new version
+        run: |
+          ver=$(python3 -c "import json;print(json.load(open('server.json'))['version'])")
+          for i in $(seq 1 30); do
+            curl -sf "https://pypi.org/pypi/fsv/$ver/json" > /dev/null && exit 0; sleep 10
+          done
+          echo "::error::fsv $ver not visible on PyPI yet"; exit 1
+      - name: Publish to the MCP Registry
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
