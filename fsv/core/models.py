@@ -165,6 +165,7 @@ class ScanConfig(BaseModel):
     exclude_paths: list[str] = Field(default_factory=list)   # glob patterns, e.g. "/admin/*"
     seed_urls:    list[str]  = Field(default_factory=list)   # extra same-origin entry points
     tags:         list[str]  = Field(default_factory=list)   # free-form labels for history
+    proxy:        str        = ""                        # http(s)://host:port, "env" = HTTPS_PROXY/HTTP_PROXY, "" = direct
 
     @field_validator("target")
     @classmethod

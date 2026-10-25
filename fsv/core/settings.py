@@ -32,7 +32,7 @@ SCAN_KEYS: dict[str, tuple[type, ...]] = {
     "profile": (str,), "crawl": (bool,), "max_urls": (int,), "depth": (int,), "threads": (int,),
     "timeout": (int,), "rate": (int, float), "modules": (list,), "exclude": (list,),
     "headers": (dict,), "cookies": (dict,), "tags": (list,), "robots": (bool,), "max_time": (int,),
-    "fail_on": (str,), "baseline": (str,), "ct_logs": (bool,), "external": (bool,), "seeds": (list,),
+    "fail_on": (str,), "baseline": (str,), "ct_logs": (bool,), "external": (bool,), "seeds": (list,), "proxy": (str,),
 }
 _ENV = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 

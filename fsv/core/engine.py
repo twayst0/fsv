@@ -150,6 +150,7 @@ async def run_scan(
 
     limit = scan_config.max_duration or None
     try:
+        proxy = resolve_proxy(scan_config)
         await check_target(scan_config.target, allow_private=not BLOCK_PRIVATE)
         await _require_proof_of_control(scan_config)
         async with asyncio.timeout(limit):
@@ -168,6 +169,7 @@ async def run_scan(
                     timeout      = scan_config.timeout,
                     rotate_ua    = scan_config.rotate_ua,
                     default_ua   = scan_config.user_agent or USER_AGENT,
+                    proxy        = proxy,
                 )
 
                 # 1) CRAWL
@@ -340,6 +342,32 @@ _DANGEROUS_LINK = ("logout", "signout", "sign-out", "log-out", "disconnect",
 _SKIP_EXT = (".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp", ".ico",
              ".css", ".js", ".woff", ".woff2", ".ttf", ".eot", ".mp4",
              ".mp3", ".pdf", ".zip", ".gz", ".tar", ".rar", ".dmg", ".exe")
+
+
+def resolve_proxy(cfg: ScanConfig) -> str | None:
+    """
+    The proxy for this scan, or None. "env" reads HTTPS_PROXY / HTTP_PROXY (by the target's scheme)
+    and honours NO_PROXY. Refused on shared deployments: the proxy resolves the target itself, so
+    FSV's private-address guard could no longer see where requests really go.
+    """
+    raw = (cfg.proxy or "").strip()
+    if not raw:
+        return None
+    if raw.lower() == "env":
+        import os
+        from urllib.request import proxy_bypass_environment
+        scheme = urlparse(cfg.target).scheme
+        raw = (os.environ.get(f"{scheme}_proxy") or os.environ.get(f"{scheme.upper()}_PROXY")
+               or os.environ.get("https_proxy") or os.environ.get("HTTPS_PROXY")
+               or os.environ.get("http_proxy") or os.environ.get("HTTP_PROXY") or "")
+        if not raw or proxy_bypass_environment(urlparse(cfg.target).hostname or ""):
+            return None
+    if urlparse(raw).scheme not in ("http", "https") or not urlparse(raw).hostname:
+        raise ValueError(f"proxy must be an http(s)://host:port URL, got {raw!r}")
+    if BLOCK_PRIVATE:
+        raise ValueError("a proxy cannot be used while FSV_BLOCK_PRIVATE is set (shared deployment): "
+                         "the address guard could not see where requests go")
+    return raw
 
 
 def same_origin(url: str, host: str) -> bool:

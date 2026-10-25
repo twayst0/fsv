@@ -101,3 +101,45 @@ async def test_many_concurrent_scans_share_nothing():
     finally:
         await runner.cleanup()
     assert len({r.scan_id for r in results}) == 8 and all(r.status.value == "completed" for r in results)
+
+
+# ── proxy ────────────────────────────────────────────────────────────────────
+
+async def test_scan_through_a_proxy_reaches_a_host_only_the_proxy_can_resolve():
+    """The target name does not exist in DNS; only the proxy knows it — so success proves every
+    request went through the proxy (corporate networks, sandboxes)."""
+    seen_hosts = set()
+
+    async def proxy(request):
+        seen_hosts.add(request.host)
+        if request.path == "/":
+            return web.Response(text="<html><a href='/about'>a</a></html>", content_type="text/html",
+                                headers={"Server": "Apache/2.2.15"})
+        return web.Response(text="<html>about</html>", content_type="text/html")
+    runner, port = await _serve(proxy)
+    try:
+        cfg = _cfg(port, target="http://only-via-proxy.fsv.invalid", proxy=f"http://127.0.0.1:{port}")
+        r = await asyncio.wait_for(run_scan(cfg), 120)
+    finally:
+        await runner.cleanup()
+    assert r.status.value == "completed", r.error
+    assert "http://only-via-proxy.fsv.invalid/about" in r.urls
+    assert seen_hosts == {"only-via-proxy.fsv.invalid"}
+    assert any(f.title == "Server Version Disclosure" for f in r.findings)
+
+
+def test_resolve_proxy_env_no_proxy_and_shared_deployment(monkeypatch):
+    from fsv.core import engine
+    cfg = lambda p, t="https://site.test": ScanConfig(target=t, proxy=p)
+    assert engine.resolve_proxy(cfg("")) is None
+    monkeypatch.setenv("HTTPS_PROXY", "http://corp-proxy:3128")
+    monkeypatch.delenv("https_proxy", raising=False)
+    assert engine.resolve_proxy(cfg("env")) == "http://corp-proxy:3128"
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.setenv("NO_PROXY", "site.test")
+    assert engine.resolve_proxy(cfg("env")) is None
+    with pytest.raises(ValueError):
+        engine.resolve_proxy(cfg("socks5://x:1"))
+    monkeypatch.setattr(engine, "BLOCK_PRIVATE", True)
+    with pytest.raises(ValueError, match="FSV_BLOCK_PRIVATE"):
+        engine.resolve_proxy(cfg("http://p:1"))

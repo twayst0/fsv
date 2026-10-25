@@ -25,6 +25,12 @@ Or via the API: `POST /api/verify {"host": …}` then `POST /api/verify/check`. 
 issued by one installation is useless for another. A DNS proof covers the domain and its subdomains; an HTTP proof covers exactly that host and is
 not accepted through a redirect.
 
+## Behind a proxy
+`fsv scan … --proxy http://proxy:3128` (or `--proxy env` for `HTTPS_PROXY`/`HTTP_PROXY`, honouring `NO_PROXY`;
+`proxy = "env"` in `fsv.toml`) sends every HTTP request through the proxy. DNS-based modules still use the local
+resolver, and the TLS analyzer connects directly. A proxy is **refused when `FSV_BLOCK_PRIVATE` is set**: the proxy
+resolves the target itself, so FSV's private-address guard could no longer see where requests go.
+
 ## Network egress
 FSV needs outbound HTTP(S) to targets and DNS. Optional features add third parties: `--ct-logs` (crt.sh) and the `cloud_storage` / `takeover` modules
 (object-storage endpoints, public DNS). `--no-external` / `external = false` removes the latter two.

@@ -23,7 +23,7 @@ import random
 from dataclasses import dataclass, field
 
 import aiohttp
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from fsv.core.netsafety import BlockedTarget
 
@@ -123,8 +123,10 @@ class HTTPClient:
         rotate_ua:    bool = False,
         default_ua:   str = "",
         max_body:     int = 2_000_000,
+        proxy:        str | None = None,
     ) -> None:
         self.session   = session
+        self.proxy     = proxy or None      # http(s)://host:port — every request goes through it
         self.bucket    = TokenBucket(rate_per_sec)
         self.max_retries = max_retries
         self.timeout   = timeout
@@ -211,6 +213,12 @@ class HTTPClient:
     ) -> Response:
         attempt = 0
         last_exc: Exception | None = None
+        if self.proxy:
+            # through a proxy the request line carries the absolute URL; "http://host" with no path
+            # is rejected or mis-routed by stricter proxies — browsers and curl send "http://host/"
+            p = urlsplit(url)
+            if not p.path:
+                url = urlunsplit((p.scheme, p.netloc, "/", p.query, p.fragment))
         while attempt <= self.max_retries:
             await self.bucket.acquire()
             h = dict(headers or {})
@@ -224,7 +232,7 @@ class HTTPClient:
                 to = aiohttp.ClientTimeout(total=self.timeout)
                 async with self.session.request(
                     method, url, params=params, data=data, headers=h,
-                    timeout=to, allow_redirects=allow_redirects, ssl=False,
+                    timeout=to, allow_redirects=allow_redirects, ssl=False, proxy=self.proxy,
                 ) as resp:
                     raw = await resp.content.read(self.max_body + 1)
                     truncated = len(raw) > self.max_body

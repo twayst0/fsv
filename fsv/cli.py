@@ -64,6 +64,8 @@ _ORDER = ["info", "low", "medium", "high", "critical"]
 @click.option("--exclude", default="", help="Comma-separated path globs to skip, e.g. /admin/*.")
 @click.option("--seed", "seeds", multiple=True,
               help="Extra same-origin path or URL to start crawling from, e.g. /app/dashboard (repeatable).")
+@click.option("--proxy", default="",
+              help="Send requests through an HTTP(S) proxy: http://host:port, or 'env' for HTTPS_PROXY.")
 @click.option("--header", "headers", multiple=True, help="Extra request header 'Name: value' (repeatable).")
 @click.option("--cookie", "cookies", multiple=True, help="Request cookie 'name=value' (repeatable).")
 @click.option("--tag", "tags", multiple=True, help="Label this scan (repeatable).")
@@ -85,7 +87,7 @@ _ORDER = ["info", "low", "medium", "high", "critical"]
 @click.option("-v", "--verbose", is_flag=True, help="Log module errors and engine details to stderr.")
 @click.pass_context
 def scan(ctx, target, authorize, config_path, profile, no_crawl, max_urls, depth, threads, timeout, rate,
-         modules, exclude, seeds, headers, cookies, tags, robots, max_time, ct_logs, no_external,
+         modules, exclude, seeds, proxy, headers, cookies, tags, robots, max_time, ct_logs, no_external,
          baseline_path, write_baseline, output, fail_on, quiet, verbose):
     """Run a vulnerability scan against TARGET."""
     # -v turns on FSV's own debug logging only — never the DEBUG firehose of third-party libraries
@@ -137,6 +139,7 @@ def scan(ctx, target, authorize, config_path, profile, no_crawl, max_urls, depth
             exclude = ",".join(file_cfg["exclude"])
         tags = tuple(tags) + tuple(file_cfg.get("tags", []))
         seeds = tuple(seeds) + tuple(file_cfg.get("seeds", []))
+        proxy = proxy or file_cfg.get("proxy", "")
         file_headers, file_cookies = file_cfg.get("headers", {}), file_cfg.get("cookies", {})
     else:
         file_headers, file_cookies = {}, {}
@@ -155,7 +158,7 @@ def scan(ctx, target, authorize, config_path, profile, no_crawl, max_urls, depth
         crawl=not no_crawl, max_urls=max_urls, depth=depth, timeout=timeout,
         threads=threads, rate_per_sec=rate, profile=ScanProfile(profile),
         exclude_paths=[p.strip() for p in exclude.split(",") if p.strip()],
-        seed_urls=[s.strip() for s in seeds if s.strip()],
+        seed_urls=[s.strip() for s in seeds if s.strip()], proxy=proxy,
         headers={**file_headers, **_parse_kv(headers, ":")},
         cookies={**file_cookies, **_parse_kv(cookies, "=")},
         tags=list(tags), respect_robots=robots, max_duration=max_time,
@@ -516,6 +519,11 @@ def doctor():
        f"{'BLOCKED (FSV_BLOCK_PRIVATE)' if BLOCK_PRIVATE else 'allowed (set FSV_BLOCK_PRIVATE=1 for shared deployments)'}")
     (ok if API_TOKEN else warn)("dashboard token set" if API_TOKEN else
                                 "FSV_TOKEN not set — fine on loopback, required if exposed")
+    env_proxy = next((os.environ[k] for k in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy")
+                      if os.environ.get(k)), "")
+    if env_proxy:
+        warn("a proxy is configured in the environment — FSV connects directly unless you pass "
+             "--proxy env (or proxy = \"env\" in fsv.toml)")
     errs = registry.plugin_errors()
     ok(f"{len(registry.load_registry())} modules loaded")
     for e in errs:

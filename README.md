@@ -173,6 +173,7 @@ fsv scan example.com --authorize --exclude "/admin/*,/logout" --max-urls 100 --m
 fsv scan example.com --authorize --header "Authorization: Bearer X" --cookie "session=abc"    # authenticated
 fsv scan example.com --authorize --ct-logs        # also ask Certificate Transparency (crt.sh) for subdomains*
 fsv scan example.com --authorize --no-external    # skip modules that contact hosts other than the target
+fsv scan example.com --authorize --proxy env      # behind a corporate proxy (HTTPS_PROXY); or --proxy http://host:3128
 
 # reports & fixes
 fsv scan example.com --authorize -o report.html   # .md .json .html .sarif .csv

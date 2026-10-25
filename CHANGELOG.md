@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.1.1
+- **Proxy support**: `--proxy http://host:port` or `--proxy env` (HTTPS_PROXY/HTTP_PROXY, honours NO_PROXY); `proxy` in `fsv.toml`. Refused on shared deployments (`FSV_BLOCK_PRIVATE`), where it would blind the private-address guard. `fsv doctor` points it out when a proxy is set in the environment. Tested end to end with a target name only the proxy can resolve.
+- Fixed: through a proxy the bare target `http://host` was requested without a path, which stricter proxies reject.
+- Release workflow (`.github/workflows/release.yml`) creates the tag and GitHub release with notes from this file.
+
 ## 2.1.0
 **Packaging & project**
 - Published as `pip install fsv`: PEP 621 `pyproject.toml` (single version source, requirements.txt as the dependency list), PyPI page `docs/PYPI.md`, release workflow with Trusted Publishing (`.github/workflows/publish.yml`), and a CI job that builds, `twine check`s and test-installs the wheel on every push.
