@@ -1,0 +1,41 @@
+name: Create release
+
+# Creates the tag and the GitHub release for a version, with notes taken from CHANGELOG.md.
+# Run it from the Actions tab ("Run workflow"). A release made with GITHUB_TOKEN does not trigger
+# publish.yml, so use this for versions already on PyPI — or publish separately.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to create, e.g. v2.1.0"
+        required: true
+      target:
+        description: "Commit SHA or branch the tag points at"
+        required: true
+        default: main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Release notes from CHANGELOG.md
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          ver="${TAG#v}"
+          awk -v v="## $ver" '$0==v{on=1;next} on&&/^## /{exit} on' CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "::error::no '## $ver' section in CHANGELOG.md"; exit 1; }
+          printf '\n---\n`pip install fsv==%s`  ·  https://pypi.org/project/fsv/%s/\n' "$ver" "$ver" >> notes.md
+          cat notes.md
+      - name: Create tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          TARGET: ${{ inputs.target }}
+        run: gh release create "$TAG" --target "$TARGET" --title "FSV ${TAG#v}" --notes-file notes.md
