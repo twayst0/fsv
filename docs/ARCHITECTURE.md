@@ -33,7 +33,7 @@
   report phantom dangling records whenever the network hiccups. The backend is injectable, so DNS logic is tested against a fake zone.
 * **Validate content, not status codes.** Exposure checks accept a response only if the body is the thing it claims to be.
 * **Secrets are masked at the source** (`mask_secret`, `redact_preview`), so reports and logs never become a second copy of a leak.
-* **Safety belongs in the engine, not the UI.** The outbound address policy, request guard, token auth and proof-of-control apply to CLI, web and MCP alike.
+* **Safety is layered where it can't be bypassed.** The outbound address policy and proof-of-control sit in the engine, so CLI, web, MCP and CI all get them. Request guard (Host / Origin / JSON-only) and token auth belong to the web server, where the browser threat model lives; a CLI user already has a shell.
 * **Failures are visible.** A module that crashes is counted, its first error is stored and logged (`-v`), and the dashboard shows a "results may be incomplete" bar.
 
 ## Layout

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+**Docs**
+- README redesigned: animated, self-contained SVGs (hero radar, terminal replay, detections, attack-path chain, pipeline) that respect `prefers-reduced-motion`, plus real dashboard screenshots (WebP).
+- `examples/demo_site.py` — a deliberately vulnerable, loopback-only demo target; the README visuals are generated from a real scan of it (`scripts/build_readme_assets.sh [--screenshots]`).
+- `tests/test_assets.py` keeps the images honest (well-formed, no scripts or external loads, alt text, files exist).
+- Dashboard header pluralises correctly ("1 scan · 1 target").
+
 ## 2.0.0
 **Detection** — 30 modules (was 23)
 - `takeover`: dangling CNAME / unclaimed SaaS resource / unregistered target domain; opt-in Certificate-Transparency discovery.

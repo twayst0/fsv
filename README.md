@@ -1,67 +1,126 @@
-<div align="center">
+<p align="center">
+  <img src="docs/assets/hero.svg" alt="FSV — finds what checklists miss. An animated radar sweep lights up a dangling CNAME, an orphaned bucket, an SPF include that no longer exists, an XSS leading to session theft and an exposed source map." width="100%">
+</p>
 
-# FSV
+<p align="center">
+  <a href="https://github.com/twayst0/fsv/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/twayst0/fsv/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-3776ab?logo=python&logoColor=white">
+  <img alt="30 modules" src="https://img.shields.io/badge/modules-30-7cf0c0">
+  <img alt="detection only" src="https://img.shields.io/badge/mode-detection--only-30c48d">
+  <img alt="MCP server" src="https://img.shields.io/badge/MCP-server-8a7cff">
+  <img alt="license: personal use" src="https://img.shields.io/badge/license-personal%20use-ff9a42">
+</p>
 
-### Web security scanner that finds what checklists miss — and tells you how to fix it
+<p align="center">
+  <b>Web security scanner for the problems nobody is watching</b> — dangling DNS &amp; subdomain takeover, orphaned cloud buckets,
+  SPF includes that expired, source maps &amp; secrets in your JavaScript, end-of-life software, and the <b>attack paths</b>
+  that turn small findings into a real compromise.<br>
+  Runs as a <b>CLI</b>, a <b>dashboard</b>, an <b>MCP server</b> for AI agents, and a <b>CI step</b>.
+</p>
 
-Dangling DNS & subdomain takeover · orphaned cloud buckets · SPF includes that expired · source maps & secrets in your JavaScript ·
-end-of-life software · and the **attack paths** that combine small findings into a real compromise.
-Runs as a **CLI**, a **dashboard**, an **MCP server** for AI agents, and a **CI step**.
-
-**30 modules** · defensive, detection-only · local-first · `pip install` and go
-
-</div>
-
----
+<p align="center">
+  <a href="#see-it-work">See it work</a> ·
+  <a href="#what-it-finds-that-checklists-miss">What it finds</a> ·
+  <a href="#attack-paths">Attack paths</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#usage">Usage</a> ·
+  <a href="#in-ci">CI</a> ·
+  <a href="#mcp-ai-agents">MCP</a> ·
+  <a href="#limits--what-fsv-is-not">Limits</a> ·
+  <a href="#documentation">Docs</a>
+</p>
 
 > ### ⚠ Authorized use only
 > FSV is a security **assessment** tool. Use it **only** against systems you own or are **explicitly authorized in writing** to test. Scanning systems without permission is illegal in most jurisdictions. Every entry point (web, CLI, MCP, CI) requires you to confirm authorization, and a shared deployment can additionally require **proof of control** of the target before any payload is sent ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
 
 ---
 
-## Why FSV
+## See it work
 
-Plenty of tools tell you a header is missing. The incidents that actually hurt organisations — including very well-run ones — are quieter, and they
-tend to be in places nobody is looking:
+<p align="center">
+  <img src="docs/assets/terminal.svg" alt="Animated terminal replay: fsv scan against the demo site prints Risk F 100/100, three critical findings including a hard-coded Stripe key and an XSS attack path, an orphaned bucket, an exposed actuator endpoint, then `fsv fixes` prints nginx configuration." width="92%">
+</p>
 
-| | What it is | Module |
-|---|---|---|
-| 🪝 | A **DNS record outlived its project** (`blog.example.com → old-app.github.io`): anyone can claim the name and serve content from your domain | `takeover` |
-| 🪣 | A page still loads a script from a **storage bucket that no longer exists** — whoever creates it controls your page | `cloud_storage` |
-| ✉️ | An **SPF `include:` of an expired domain**, an SPF record over the **10-lookup limit**, a **512-bit DKIM key** — "email auth is set up" but doesn't hold | `dns_security` |
-| 🗺️ | **Source maps** and **hard-coded credentials** shipped to every visitor | `js_analysis` |
-| 🧱 | **jQuery 3.3.1 / AngularJS 1.x / Vue 2** and **PHP 8.1** past end of support | `js_libs`, `tech` |
-| ⛓️ | **XSS + a session cookie without HttpOnly** = account takeover. Two "medium" findings, one critical story | `correlation` |
+That output is **real** — a scan of the deliberately vulnerable demo site that ships in this repo. Reproduce it in a minute:
 
-Details, and how FSV avoids false alarms, in **[docs/DETECTIONS.md](docs/DETECTIONS.md)**.
+```bash
+python examples/demo_site.py &                 # http://127.0.0.1:8961 — loopback only, fake secrets
+fsv scan http://127.0.0.1:8961 --authorize
+fsv web                                        # open the same scan in the dashboard
+```
+<sub>The `cloud_storage` check asks Amazon S3 whether the demo's bucket exists — that one request goes to AWS (read-only). Skip it with `--no-external`.</sub>
+
+## What it finds that checklists miss
+
+Plenty of tools tell you a header is missing. The incidents that actually hurt organisations — including very well-run ones — are quieter, and they live where nobody is looking.
+
+<p align="center">
+  <img src="docs/assets/detections.svg" alt="Six detection cards: dangling DNS record, orphaned bucket used as a script source, SPF include of a domain that no longer exists, exposed source map with a masked key, end-of-life PHP and jQuery, and an XSS plus non-HttpOnly cookie attack path." width="100%">
+</p>
+
+| | The problem | How FSV avoids crying wolf | Module |
+|---|---|---|---|
+| 🪝 | A **DNS record outlived its project** — anyone can claim the name and serve content from *your* domain | asks for the **CNAME explicitly** (an A lookup hides dangling aliases), follows the chain, and never treats a resolver *error* as "dangling" | `takeover` |
+| 🪣 | A page loads a script from a **bucket that no longer exists** — whoever creates it controls your page | one `max-keys=1` request; objects are never fetched, nothing is created | `cloud_storage` |
+| ✉️ | **SPF `include:` of an expired domain**, SPF over the **10-lookup limit**, a **512-bit DKIM key** | skips all DNS checks (with an explanation) if the domain itself doesn't resolve | `dns_security` |
+| 🗺️ | **Source maps** and **hard-coded credentials** shipped to every visitor | credentials are reported **masked** and are never tested | `js_analysis` |
+| 🧱 | **jQuery 3.3.1 / AngularJS 1.x / Vue 2** and **PHP 8.1** past end of support | dated tables — flagged the day support ends; version read from the URL without downloading third-party files | `js_libs` · `tech` |
+| ⛓️ | **XSS + a session cookie without HttpOnly** = account takeover | only chains whose every link was found on *this* scan | `correlation` |
+
+Details, and every false-positive guard: **[docs/DETECTIONS.md](docs/DETECTIONS.md)**.
+
+## Attack paths
+
+Real compromises are rarely one bug — they're two or three "medium" problems that line up. Scanners rate each in isolation, so the combination stays invisible until someone writes the incident report. FSV reads **its own findings** (sending nothing more) and, where a chain is actually present, adds a finding that names the links, tells the story step by step, and states **the cheapest single fix that breaks it**. If a link is triaged away, the chain steps aside automatically.
+
+<p align="center">
+  <img src="docs/assets/attack-path.svg" alt="Animated chain: reflected XSS reads a session cookie that lacks HttpOnly, leading to account takeover. A '+HttpOnly' badge lands on the second link and the chain turns green: chain broken." width="100%">
+</p>
+
+| Chain | Why it is worse together |
+|---|---|
+| XSS **+** session cookie without HttpOnly | one crafted link = account takeover |
+| no HSTS / no HTTPS **+** session cookie without Secure | session readable on any hostile network |
+| takeover-able subdomain **+** session cookie scoped to the parent domain | whoever claims the subdomain receives your users' sessions |
+| dangling SPF include **+** DMARC not enforcing | perfectly authenticated phishing as your domain |
+| no SPF/DMARC enforcement at all | your domain can be spoofed |
+
+## Dashboard
+
+<p align="center">
+  <img src="docs/assets/dashboard.webp" alt="The FSV dashboard after scanning the demo site: risk grade F, 100/100, counts per severity, and an Attack paths panel explaining two chains step by step with a 'Break the chain' recommendation for each." width="92%">
+</p>
+<p align="center">
+  <img src="docs/assets/findings.webp" alt="The OWASP Top 10 breakdown and the findings list with the Stripe key finding expanded: description, masked evidence, remediation and references." width="92%">
+</p>
+
+Liquid-glass UI with live progress (survives a page reload), the attack-path panel, OWASP breakdown, per-host risk trend, inline triage, module picker, scan comparison, and one-click export — reports **or paste-ready fixes**.
 
 ## Features
 
-- **Attack-path correlation** — reads its own findings and, where a chain is really present, adds one that names the links, tells the story step by step, and states **the cheapest single fix that breaks it**. A chain disappears when one of its links is triaged away.
-- **Fix packs** — turn findings into paste-ready **nginx / Apache / Caddy / Express / DNS** configuration (`fsv fixes <scan> nginx`). Only what was actually found; CSP is emitted report-only.
-- **CI-ready** — `fsv.toml` project config, **baselines** (gate only on *new* findings), `--fail-on`, SARIF for GitHub code scanning, and a ready-made **GitHub Action**.
-- **Triage that sticks** — false positive / accepted risk / fixed / confirmed, stored per host by stable fingerprint, re-applied to every later scan, excluded from the score. Diff any two scans; per-host risk trend.
-- **Evidence over guesses** — exposure checks validate *content* (a `.git/HEAD` must look like one; a SPA that answers 200 to everything produces nothing); every finding has a **confidence** (certain / firm / tentative), a CWE, an OWASP Top 10 (2021) category, impact and remediation.
-- **Honest failure** — a crashing module is counted, explained and logged; a target that never answered is flagged, not graded "clean"; a broken resolver doesn't turn into a page of "missing SPF".
-- **Safe by construction** — secrets are *masked at the source* and never validated; outbound policy blocks cloud-metadata/link-local always (loopback/RFC 1918 optionally) on every lookup and redirect hop; dashboard has CSRF / DNS-rebinding protection and token auth.
+- **Fix packs** — turn findings into **nginx / Apache / Caddy / Express / DNS** configuration (`fsv fixes <scan> nginx`). Only what was actually found; CSP is emitted report-only.
+- **CI-ready** — `fsv.toml`, **baselines** (gate only on *new* findings), `--fail-on`, SARIF for GitHub code scanning, and a ready-made **GitHub Action**.
+- **Triage that sticks** — false positive / accepted risk / fixed / confirmed, stored per host by stable fingerprint, re-applied to later scans, excluded from the score. Diff any two scans; per-host trend.
+- **Evidence over guesses** — exposure checks validate *content* (a `.git/HEAD` must look like one; an SPA that answers 200 to everything produces nothing). Every finding has a **confidence**, a CWE, an OWASP Top 10 (2021) category, impact and remediation.
+- **Honest failure** — a crashing module is counted, explained and logged; a target that never answered is flagged, not graded "clean".
+- **Safe by construction** — secrets masked at the source; cloud-metadata/link-local never reachable, loopback/RFC 1918 optionally blocked, on every lookup and redirect hop; dashboard CSRF/DNS-rebinding guard and token auth.
 - **Extensible** — a module is one class; drop a file in `~/.fsv/plugins` or ship an entry-point package ([docs/WRITING_MODULES.md](docs/WRITING_MODULES.md)). Bring your own JS-library advisories and EOL dates.
-- **Fast & polite** — async engine, shared HTTP client with response cache, request coalescing, token-bucket rate limit, retries, size cap, time limit with partial results.
+- **Fast & polite** — async engine, shared HTTP client with cache, request coalescing, token-bucket rate limit, retries, size cap, time limit with partial results.
 - **Five report formats** — Markdown (OWASP-grouped), JSON, self-contained HTML, SARIF 2.1, CSV.
-- **Liquid-glass dashboard** — risk gauge, **attack-path panel**, OWASP breakdown, trend sparkline, inline triage, module picker, scan compare, live progress that survives a page reload.
-- **MCP server** — Claude, Cursor or any MCP client can run an authorized assessment, lead with the attack paths, and generate the fixes.
-- **Local-first** — results in a local SQLite file. Nothing phones home; the only optional third-party calls are listed in [DEPLOYMENT.md](docs/DEPLOYMENT.md#network-egress).
+- **Local-first** — results in a local SQLite file; the only optional third-party calls are listed in [DEPLOYMENT.md](docs/DEPLOYMENT.md#network-egress).
 
 ## Install
 
 ```bash
 git clone <this repository> && cd fsv
-./install.sh && source .venv/bin/activate     # or:  python -m venv .venv && . .venv/bin/activate && pip install .
-fsv doctor                                    # checks Python, dependencies, DNS, database, plugins
+./install.sh && source .venv/bin/activate
+fsv doctor        # checks Python, dependencies, DNS, database, plugins
 ```
+Prefer to do it by hand? `python -m venv .venv && . .venv/bin/activate && pip install -e .`
 
 Requires **Python 3.11+**. Docker: see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) (`docker compose up`).
 
-## Quick start
+## Usage
 
 ```bash
 fsv scan example.com --authorize                       # full scan of a site you own
@@ -69,7 +128,8 @@ fsv scan example.com --authorize --profile passive     # read-only: no payloads 
 fsv web                                                # dashboard → http://127.0.0.1:7474
 ```
 
-### CLI
+<details>
+<summary><b>CLI reference</b></summary>
 
 ```bash
 # scope & tuning
@@ -93,6 +153,7 @@ fsv verify example.com   ·   fsv verify example.com --check
 
 fsv modules   ·   fsv doctor
 ```
+</details>
 
 ### In CI
 
@@ -133,6 +194,9 @@ SARIF is uploaded to GitHub code scanning; the HTML report and log are attached 
 ```
 > *"I own example.com. Use FSV to scan it, tell me the attack paths first, then give me the nginx fixes."*
 
+<details>
+<summary><b>MCP tools</b></summary>
+
 | Tool | Purpose |
 |---|---|
 | `fsv_scan` | Full scan (profiles, scope, time-box; CT logs and external checks opt-in) |
@@ -144,8 +208,14 @@ SARIF is uploaded to GitHub code scanning; the HTML report and log are attached 
 | `fsv_list_scans` · `fsv_scan_stats` · `fsv_list_modules` | History · request stats · catalogue |
 
 Scan results carry an `attack_paths` section so the agent can lead with what matters.
+</details>
 
 ## Modules (30)
+
+FSV ships **30 modules** — 24 passive, 6 active. Run `fsv modules` for the live list.
+
+<details>
+<summary><b>The full catalogue</b> &nbsp;<sub>(or run <code>fsv modules</code>)</sub></summary>
 
 | Module | Looks for | Kind |
 |---|---|---|
@@ -164,8 +234,18 @@ Scan results carry an `attack_paths` section so the agent can lead with what mat
 | `xss` · `sqli` · `ssti` · `open_redirect` · `cors` · `host_header_injection` | reflected/error-based/marker checks (benign payloads) | **active** |
 
 ↗ contacts hosts other than the target (skip with `--no-external`). `passive` = sends no crafted payloads. **Profiles:** `passive` (only passive modules), `balanced` (default), `aggressive` (higher rate/concurrency).
+</details>
 
-## Configuration
+## How it works
+
+<p align="center">
+  <img src="docs/assets/pipeline.svg" alt="Pipeline: crawl, 30 modules, aggregate by fingerprint, correlate into attack paths, triage per host, report — shared by CLI, dashboard, MCP agents and the GitHub Action." width="100%">
+</p>
+
+One engine, four front doors. Address policy and proof of control live in the engine, so every front door gets them; request guard and token auth belong to the web server. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+<details>
+<summary><b>Configuration (environment variables)</b></summary>
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -179,6 +259,7 @@ Scan results carry an `attack_paths` section so the agent can lead with what mat
 | `FSV_DISABLED_MODULES` | — | comma-separated module names to turn off |
 | `FSV_PLUGIN_DIR` / `FSV_NO_PLUGINS` | `~/.fsv/plugins` / off | plugin discovery |
 | `FSV_ADVISORY_FILE` / `FSV_EOL_FILE` | — | your own JS-library advisories / end-of-life dates (JSON) |
+</details>
 
 ## Limits — what FSV is *not*
 
@@ -191,6 +272,8 @@ Scan results carry an `attack_paths` section so the agent can lead with what mat
 ## Documentation
 
 [Detections](docs/DETECTIONS.md) · [Architecture](docs/ARCHITECTURE.md) · [Writing modules](docs/WRITING_MODULES.md) · [Deploying safely](docs/DEPLOYMENT.md) · [Security policy](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
+
+<sub>The animated SVGs and screenshots above are generated from a real scan: <code>scripts/build_readme_assets.sh --screenshots</code>.</sub>
 
 ## License
 

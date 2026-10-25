@@ -47,6 +47,12 @@ function applyTheme(t) {
 $("themeBtn").onclick = () => applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
 (function () { let t = "dark"; try { t = localStorage.getItem("fsv-theme") || "dark"; } catch (e) {} applyTheme(t); })();
 
+const plural = (n, word) => `${n || 0} ${word}${(n || 0) === 1 ? "" : "s"}`;
+function statsPill(o) {
+  return `<span>${plural(o.scans, "scan")}</span><span>${plural(o.targets, "target")}</span>` +
+    (o.triaged ? `<span>${o.triaged} triaged</span>` : "");
+}
+
 function esc(s) { return (s || "").toString().replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 function normTarget(raw) { raw = raw.trim(); if (!raw) return ""; if (!/^https?:\/\//i.test(raw)) raw = "https://" + raw; return raw; }
 function hostOf(u) { try { return new URL(normTarget(u)).host; } catch (e) { return u; } }
@@ -57,9 +63,7 @@ api("/api/info").then(d => {
   MODULES = d.modules || [];
   buildModuleGrid();
   const o = d.overview || {};
-  $("globalStats").innerHTML =
-    `<span>${o.scans || 0} scans</span><span>${o.targets || 0} targets</span>` +
-    (o.triaged ? `<span>${o.triaged} triaged</span>` : "");
+  $("globalStats").innerHTML = statsPill(o);
 }).catch(() => {});
 
 function buildModuleGrid() {
@@ -264,9 +268,7 @@ function flashAuth() {
 function refreshGlobalStats() {
   api("/api/info").then(d => {
     const o = d.overview || {};
-    $("globalStats").innerHTML =
-      `<span>${o.scans || 0} scans</span><span>${o.targets || 0} targets</span>` +
-      (o.triaged ? `<span>${o.triaged} triaged</span>` : "");
+    $("globalStats").innerHTML = statsPill(o);
   }).catch(() => {});
 }
 

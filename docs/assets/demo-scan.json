@@ -1,0 +1,160 @@
+{
+ "note": "Trimmed output of: python examples/demo_site.py & fsv scan http://127.0.0.1:8961 --authorize  — used by scripts/make_readme_assets.py",
+ "target": "http://127.0.0.1:8961",
+ "scan_id": "ccd39db8",
+ "grade": "F",
+ "risk_score": 100,
+ "duration_s": 2.2,
+ "urls_scanned": 2,
+ "requests": 147,
+ "tech_stack": [
+  "jQuery",
+  "Apache"
+ ],
+ "counts": {
+  "critical": 3,
+  "high": 9,
+  "medium": 5,
+  "low": 6,
+  "info": 4,
+  "total": 27,
+  "suppressed": 0
+ },
+ "findings": [
+  {
+   "severity": "critical",
+   "title": "Hard-Coded Stripe live secret key in Client-Side Code",
+   "module": "js_analysis"
+  },
+  {
+   "severity": "critical",
+   "title": "Attack Path: XSS → Session Hijack (cookie readable by script)",
+   "module": "correlation"
+  },
+  {
+   "severity": "critical",
+   "title": "Site Not Using HTTPS",
+   "module": "ssl"
+  },
+  {
+   "severity": "high",
+   "title": "Orphaned Cloud Storage Bucket Referenced: s3://fsv-demo-orphan-0f3a9c1d",
+   "module": "cloud_storage"
+  },
+  {
+   "severity": "high",
+   "title": "Sensitive File Exposed: `/actuator/env`",
+   "module": "paths"
+  },
+  {
+   "severity": "high",
+   "title": "Cookie Missing HttpOnly Flag: `SESSIONID`",
+   "module": "cookies"
+  },
+  {
+   "severity": "high",
+   "title": "Cookie Missing Secure Flag: `SESSIONID`",
+   "module": "cookies"
+  },
+  {
+   "severity": "high",
+   "title": "Attack Path: Session Cookie Exposed to Network Attackers",
+   "module": "correlation"
+  },
+  {
+   "severity": "high",
+   "title": "Missing Security Header: Content-Security-Policy",
+   "module": "headers"
+  },
+  {
+   "severity": "high",
+   "title": "Missing Security Header: Strict-Transport-Security",
+   "module": "headers"
+  },
+  {
+   "severity": "high",
+   "title": "End-of-Life Software: Apache httpd 2.2.15",
+   "module": "tech"
+  },
+  {
+   "severity": "high",
+   "title": "Reflected Cross-Site Scripting (XSS)",
+   "module": "xss"
+  },
+  {
+   "severity": "medium",
+   "title": "Source Map Exposes Original Source Code",
+   "module": "js_analysis"
+  },
+  {
+   "severity": "medium",
+   "title": "Clickjacking — No Frame Protection",
+   "module": "clickjacking"
+  },
+  {
+   "severity": "medium",
+   "title": "Missing Security Header: X-Content-Type-Options",
+   "module": "headers"
+  },
+  {
+   "severity": "medium",
+   "title": "Missing Security Header: X-Frame-Options",
+   "module": "headers"
+  },
+  {
+   "severity": "medium",
+   "title": "Vulnerable JavaScript Library: jQuery 3.3.1",
+   "module": "js_libs"
+  },
+  {
+   "severity": "low",
+   "title": "Third-Party Resources Without Subresource Integrity",
+   "module": "sri"
+  },
+  {
+   "severity": "low",
+   "title": "Cookie Missing SameSite Attribute: `SESSIONID`",
+   "module": "cookies"
+  },
+  {
+   "severity": "low",
+   "title": "Missing Security Header: Cache-Control",
+   "module": "headers"
+  },
+  {
+   "severity": "low",
+   "title": "Missing Security Header: Permissions-Policy",
+   "module": "headers"
+  },
+  {
+   "severity": "low",
+   "title": "Missing Security Header: Referrer-Policy",
+   "module": "headers"
+  },
+  {
+   "severity": "low",
+   "title": "Server Version Disclosure",
+   "module": "headers"
+  },
+  {
+   "severity": "info",
+   "title": "No security.txt / Disclosure Policy",
+   "module": "security_txt"
+  },
+  {
+   "severity": "info",
+   "title": "Missing Security Header: X-XSS-Protection",
+   "module": "headers"
+  },
+  {
+   "severity": "info",
+   "title": "Technology Stack Identified",
+   "module": "tech"
+  },
+  {
+   "severity": "info",
+   "title": "No WAF / CDN Detected",
+   "module": "waf_detect"
+  }
+ ]
+}
