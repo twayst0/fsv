@@ -23,6 +23,9 @@ LISTING_SIGNS = [
 
 class DirListingScanner(BaseScanner):
     name = "dir_listing"
+    category    = "passive"
+    scope       = "site"
+    description = "Directory listing / auto-index enabled"
 
     async def scan(self, url: str) -> list[Finding]:
         parsed   = urlparse(url)

@@ -20,6 +20,9 @@ WEAK_CIPHERS   = {
 
 class SSLScanner(BaseScanner):
     name = "ssl"
+    category    = "passive"
+    scope       = "site"
+    description = "SSL/TLS: HTTPS, cert validity/expiry, weak protocols & ciphers"
 
     async def scan(self, url: str) -> list[Finding]:
         parsed = urlparse(url)

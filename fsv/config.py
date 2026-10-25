@@ -41,7 +41,27 @@ MODULES_ENABLED = {
     "host_header_injection":True,
     "jwt_analysis":        True,
     "ssti":                True,
+    "sri":                 True,
+    "csp_analyzer":        True,
+    "form_security":       True,
 }
+
+# Disable modules without editing code: FSV_DISABLED_MODULES=subdomain,dns_security
+for _m in filter(None, (x.strip() for x in os.getenv("FSV_DISABLED_MODULES", "").split(","))):
+    MODULES_ENABLED[_m] = False
+
+# ── Web server limits ──────────────────────────────────────
+MAX_CONCURRENT_SCANS = int(os.getenv("FSV_MAX_SCANS", "3"))
+# Optional API token: when set, every /api and /ws call must send it
+# (header "X-FSV-Token" or ?token=...). Recommended if FSV_HOST is not loopback.
+API_TOKEN = os.getenv("FSV_TOKEN", "")
+# Extra Host names the dashboard may be reached by (comma-separated; "*" = any).
+# Loopback names and FSV_HOST are always allowed. Guards against DNS rebinding.
+ALLOWED_HOSTS = os.getenv("FSV_ALLOWED_HOSTS", "")
+# When FSV runs as a shared service, "scan this URL" is a request-forgery
+# primitive. FSV_BLOCK_PRIVATE=1 refuses loopback / RFC1918 / ULA targets (also
+# via redirects and DNS). Cloud-metadata and link-local ranges are ALWAYS blocked.
+BLOCK_PRIVATE = os.getenv("FSV_BLOCK_PRIVATE", "").lower() in ("1", "true", "yes")
 
 # ── XSS payloads (detection only) ────────────────────────
 XSS_PAYLOADS = [
@@ -196,3 +216,7 @@ TECH_SIGNATURES = {
     "Varnish":     ["X-Varnish", "Via: 1.1 varnish"],
     "Fastly":      ["X-Served-By", "Fastly-Debug-Digest"],
 }
+
+# Shared-service safeguard: scans that send payloads (non-passive) are refused for public
+# hosts unless the owner has proven control (DNS TXT or /.well-known file). See core/ownership.py.
+REQUIRE_VERIFICATION = os.getenv("FSV_REQUIRE_VERIFICATION", "").lower() in ("1", "true", "yes")

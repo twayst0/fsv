@@ -18,6 +18,9 @@ ACTIVE_TAGS = ("script", "link", "iframe", "form", "object", "embed")
 
 class MixedContentScanner(BaseScanner):
     name = "mixed_content"
+    category    = "passive"
+    scope       = "url"
+    description = "HTTP resources on HTTPS pages"
 
     async def scan(self, url: str) -> list[Finding]:
         parsed = urlparse(url)

@@ -13,6 +13,7 @@ class HostHeaderScanner(BaseScanner):
     name     = "host_header_injection"
     category = "active"
     scope    = "url"
+    description = "Host header injection (redirect/cache poisoning)"
 
     async def scan(self, url: str) -> list[Finding]:
         # Send a spoofed Host header and see if the app trusts it

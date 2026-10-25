@@ -7,6 +7,9 @@ from fsv.core.models import Finding, Severity
 
 class ClickjackingScanner(BaseScanner):
     name = "clickjacking"
+    category    = "passive"
+    scope       = "url"
+    description = "Missing frame protection"
 
     async def scan(self, url: str) -> list[Finding]:
         status, headers, _ = await self.fetch(url)

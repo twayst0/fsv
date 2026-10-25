@@ -17,6 +17,9 @@ CSRF_TOKEN_NAMES = {
 
 class CSRFScanner(BaseScanner):
     name = "csrf"
+    category    = "passive"
+    scope       = "url"
+    description = "Missing CSRF protection on POST forms"
 
     async def scan(self, url: str) -> list[Finding]:
         status, headers, body = await self.fetch(url)

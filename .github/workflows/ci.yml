@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . -r requirements-dev.txt
+      - name: Compile check
+        run: python -m compileall -q fsv
+      - name: Tests
+        run: python -m pytest -q          # hermetic: HTTP and DNS are faked in tests/helpers.py
+      - name: CLI smoke
+        run: |
+          fsv --version
+          fsv modules --json > /dev/null
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build image
+        run: docker build -t fsv:ci .
+      - name: Smoke test (CLI, then the dashboard answers its health endpoint)
+        run: |
+          docker run --rm fsv:ci --version
+          docker run -d --name fsv -e FSV_TOKEN=ci-token -e FSV_ALLOWED_HOSTS=localhost -p 127.0.0.1:7474:7474 fsv:ci
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7474/healthz || true)
+            [ "$code" = "200" ] && break; sleep 1
+          done
+          echo "healthz -> $code"; [ "$code" = "200" ]
+          [ "$(curl -s -o /dev/null -w '%{http_code}' -H 'X-FSV-Token: ci-token' http://127.0.0.1:7474/api/info)" = "200" ]
+          # the request guard must reject a rebinding Host header and an unauthenticated call
+          [ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.test' http://127.0.0.1:7474/api/info)" = "403" ]
+          [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7474/api/scans)" = "401" ]
+          docker inspect --format '{{.State.Health.Status}}' fsv || true
+          docker logs fsv | tail -5

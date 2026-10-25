@@ -17,6 +17,9 @@ REDIRECT_PARAMS = {
 
 class OpenRedirectScanner(BaseScanner):
     name = "open_redirect"
+    category    = "active"
+    scope       = "url"
+    description = "Open redirect in redirect-style parameters"
 
     async def scan(self, url: str) -> list[Finding]:
         parsed = urlparse(url)

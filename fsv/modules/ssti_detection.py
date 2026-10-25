@@ -28,6 +28,7 @@ class SSTIScanner(BaseScanner):
     name     = "ssti"
     category = "active"
     scope    = "url"
+    description = "Server-Side Template Injection (benign math marker)"
 
     async def scan(self, url: str) -> list[Finding]:
         parsed = urlparse(url)
