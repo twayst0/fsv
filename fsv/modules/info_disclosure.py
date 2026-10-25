@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 import re
-from fsv.core.scanner import BaseScanner
+from fsv.core.scanner import BaseScanner, mask_secret
 from fsv.core.models import Finding, Severity
 
 
@@ -53,6 +53,9 @@ STACK_TRACE_SIGNATURES = [
 
 class InfoDisclosureScanner(BaseScanner):
     name = "info_disclosure"
+    category    = "passive"
+    scope       = "url"
+    description = "Leaked secrets, stack traces, internal IPs"
 
     async def scan(self, url: str) -> list[Finding]:
         status, headers, body = await self.fetch(url)
@@ -70,9 +73,11 @@ class InfoDisclosureScanner(BaseScanner):
                 if label in seen_titles:
                     continue
                 # Emails are extremely common; only flag as INFO once
-                snippet = match.group(0)
-                if len(snippet) > 80:
-                    snippet = snippet[:80] + "…"
+                raw = match.group(0)
+                # emails / IPs are evidence on their own; keys and tokens get masked
+                # so the report doesn't become another place the secret leaks from
+                snippet = (raw if "email" in label.lower() or raw.startswith("-----BEGIN")
+                           else mask_secret(raw[:120]))
                 findings.append(Finding(
                     title       = f"Possible Information Disclosure: {label}",
                     severity    = sev,

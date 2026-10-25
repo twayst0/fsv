@@ -10,6 +10,7 @@ class SecurityTxtScanner(BaseScanner):
     name     = "security_txt"
     category = "passive"
     scope    = "site"
+    description = "security.txt / responsible-disclosure policy (RFC 9116)"
 
     async def scan(self, url: str) -> list[Finding]:
         parsed = urlparse(url)

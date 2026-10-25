@@ -2,28 +2,13 @@
 
 from __future__ import annotations
 import asyncio
-import ipaddress
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
+from fsv.core import dnsutil
 from fsv.core.scanner import BaseScanner
 from fsv.core.models import Finding, Severity
-
-try:
-    import dns.resolver
-    _HAVE_DNS = True
-except Exception:
-    _HAVE_DNS = False
-
-
-def _is_ip_or_local(host: str) -> bool:
-    if not host or host in ("localhost",) or host.endswith(".local"):
-        return True
-    try:
-        ipaddress.ip_address(host)
-        return True
-    except ValueError:
-        return False
+from fsv.core.netsafety import registrable_domain
 
 
 # Common subdomain prefixes. Keeps the probe quick while covering the
@@ -52,16 +37,17 @@ INTERESTING = {
 class SubdomainScanner(BaseScanner):
     """Site-wide: resolves common subdomains of the registrable domain."""
     name = "subdomain"
+    category    = "passive"
+    scope       = "site"
+    description = "Subdomain enumeration + sensitive subdomain exposure"
 
     async def scan(self, url: str) -> list[Finding]:
-        if not _HAVE_DNS:
+        if not dnsutil.HAVE_DNS:
             return []
 
-        host = urlparse(url).hostname
-        if not host or _is_ip_or_local(host):
+        domain = registrable_domain(urlparse(url).hostname or "")
+        if not domain:
             return []
-        parts  = host.split(".")
-        domain = ".".join(parts[-2:]) if len(parts) >= 2 else host
 
         found = await asyncio.to_thread(self._enumerate, domain)
         if not found:
@@ -112,15 +98,10 @@ class SubdomainScanner(BaseScanner):
 
     def _enumerate(self, domain: str) -> list[str]:
         def _resolve(prefix: str) -> str | None:
-            resolver = dns.resolver.Resolver()
-            resolver.lifetime = 2.5
-            resolver.timeout  = 2.5
             fqdn = f"{prefix}.{domain}"
-            try:
-                resolver.resolve(fqdn, "A")
-                return fqdn
-            except Exception:
-                return None
+            # exists() follows CNAMEs, so a live alias counts; a dangling one is
+            # reported by the `takeover` module instead of being listed as live
+            return fqdn if dnsutil.exists(fqdn, 2.5).status in ("ok",) else None
 
         found: list[str] = []
         with ThreadPoolExecutor(max_workers=20) as pool:

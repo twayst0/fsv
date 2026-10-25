@@ -20,6 +20,7 @@ class JWTScanner(BaseScanner):
     name     = "jwt_analysis"
     category = "passive"
     scope    = "url"
+    description = "JWT weaknesses (alg:none, weak HMAC, sensitive claims)"
 
     async def scan(self, url: str) -> list[Finding]:
         status, headers, body = await self.fetch(url)

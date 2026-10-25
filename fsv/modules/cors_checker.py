@@ -6,6 +6,9 @@ from fsv.core.models import Finding, Severity
 
 class CORSScanner(BaseScanner):
     name = "cors"
+    category    = "active"
+    scope       = "url"
+    description = "CORS misconfiguration (wildcard, origin reflection, null)"
 
     async def scan(self, url: str) -> list[Finding]:
         findings: list[Finding] = []

@@ -28,7 +28,8 @@
       </div>
     </div>
     <div class="hbtns">
-      <button class="icon-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme"></button>
+      <div class="overview-pill" id="globalStats" title="Local scan database"></div>
+      <button class="icon-btn" id="themeBtn" title="Toggle theme (T)" aria-label="Toggle theme"></button>
       <a class="icon-btn" href="https://github.com/fsvproject/fsv" target="_blank" title="GitHub" aria-label="GitHub">★</a>
     </div>
   </header>
@@ -37,7 +38,7 @@
   <section class="glass scan-panel">
     <div class="scan-row">
       <div class="input-wrap">
-        <span class="pre">https://</span>
+        <span class="pre" id="schemePre">https://</span>
         <input id="target" type="text" placeholder="target.example.com" autocomplete="off" spellcheck="false">
       </div>
       <button class="btn primary" id="scanBtn"><span>Run Scan</span></button>
@@ -47,9 +48,9 @@
     <div class="opts">
       <div class="opt">Profile
         <div class="sel"><select id="profile">
-          <option value="passive">Passive</option>
-          <option value="balanced" selected>Balanced</option>
-          <option value="aggressive">Aggressive</option>
+          <option value="passive">Passive — no payloads</option>
+          <option value="balanced" selected>Balanced — safe active</option>
+          <option value="aggressive">Aggressive — fast</option>
         </select></div>
       </div>
       <label class="chk"><input type="checkbox" id="crawl" checked><span class="box"></span>Crawl site</label>
@@ -59,13 +60,61 @@
         </select></div>
       </div>
       <div class="opt">Depth
-        <div class="sel"><select id="depth"><option>1</option><option selected>2</option><option>3</option></select></div>
+        <div class="sel"><select id="depth"><option>1</option><option selected>2</option><option>3</option><option>4</option></select></div>
       </div>
-      <div class="opt">Concurrency
-        <div class="sel"><select id="threads"><option>5</option><option selected>10</option><option>20</option></select></div>
+      <button class="mini-btn ghost" id="advToggle" type="button">⚙ Advanced</button>
+    </div>
+
+    <!-- advanced drawer -->
+    <div class="adv" id="advPanel">
+      <div class="adv-grid">
+        <div class="opt">Concurrency
+          <div class="sel"><select id="threads"><option>5</option><option selected>10</option><option>20</option><option>32</option></select></div>
+        </div>
+        <div class="opt">Timeout
+          <div class="sel"><select id="timeout"><option>5</option><option selected>10</option><option>20</option><option>30</option></select></div>s
+        </div>
+        <div class="opt">Rate/s
+          <div class="sel"><select id="rate"><option>5</option><option>10</option><option selected>20</option><option>50</option><option>100</option></select></div>
+        </div>
+        <div class="opt">Time limit
+          <div class="sel"><select id="maxDuration">
+            <option value="0" selected>none</option><option value="300">5 min</option>
+            <option value="900">15 min</option><option value="1800">30 min</option><option value="3600">1 h</option>
+          </select></div>
+        </div>
+        <label class="chk"><input type="checkbox" id="robots"><span class="box"></span>Respect robots.txt</label>
+        <label class="chk" title="Sends the scanned domain name to crt.sh (a third party)"><input type="checkbox" id="ctlogs"><span class="box"></span>Certificate-Transparency subdomains</label>
+        <label class="chk" title="Modules marked ↗ send requests to hosts other than the target (DNS-named subdomains, cloud buckets)"><input type="checkbox" id="external" checked><span class="box"></span>Allow external checks ↗</label>
       </div>
-      <div class="opt">Timeout
-        <div class="sel"><select id="timeout"><option>5</option><option selected>10</option><option>20</option></select></div>s
+      <div class="adv-2col">
+        <div class="adv-field">
+          <label>Request headers <em>(one per line — for authenticated scans)</em></label>
+          <textarea id="hdrs" rows="3" placeholder="Authorization: Bearer …" spellcheck="false"></textarea>
+        </div>
+        <div class="adv-field">
+          <label>Cookies <em>(one per line)</em></label>
+          <textarea id="cookies" rows="3" placeholder="session=…" spellcheck="false"></textarea>
+        </div>
+      </div>
+      <div class="adv-field">
+        <label>Exclude paths <em>(comma-separated globs, e.g. /admin/*, /logout)</em></label>
+        <input id="exclude" type="text" placeholder="/admin/*, /account/*" spellcheck="false">
+      </div>
+      <div class="adv-field">
+        <label>Tags <em>(label this scan)</em></label>
+        <input id="tags" type="text" placeholder="prod, pre-release" spellcheck="false">
+      </div>
+      <div class="adv-field">
+        <div class="mods-head">
+          <label>Modules <em id="modCount"></em></label>
+          <div class="mods-acts">
+            <button class="chip-btn" data-mod="all" type="button">all</button>
+            <button class="chip-btn" data-mod="passive" type="button">passive only</button>
+            <button class="chip-btn" data-mod="none" type="button">none</button>
+          </div>
+        </div>
+        <div class="mod-grid" id="modGrid"></div>
       </div>
     </div>
 
@@ -80,7 +129,7 @@
   <section class="glass progress-card" id="progressCard">
     <div class="pbar-top">
       <span class="pbar-phase" id="pPhase">initializing</span>
-      <span class="pbar-pct" id="pPct">0%</span>
+      <span class="pbar-right"><span class="pbar-found" id="pFound"></span><span class="pbar-pct" id="pPct">0%</span></span>
     </div>
     <div class="pbar"><div class="pbar-fill" id="pFill"></div></div>
     <div class="pmsg" id="pMsg">Starting…</div>
@@ -103,6 +152,8 @@
         <div class="score"><span id="riskScore">0</span><em>/100</em></div>
         <div class="score-l">risk score</div>
         <div class="gauge-target" id="ovTarget"></div>
+        <div class="delta" id="ovDelta"></div>
+        <div class="spark" id="spark" title="risk trend for this host"></div>
         <div class="gauge-tech" id="ovTech"></div>
       </div>
     </div>
@@ -116,14 +167,40 @@
     </div>
   </section>
 
+  <!-- coverage warnings (module errors, unreachable target) -->
+  <div class="warnbar" id="warnBar"></div>
+
+  <!-- ATTACK PATHS -->
+  <section class="glass paths-card" id="pathsCard">
+    <div class="owasp-head"><h3>⛓ Attack paths</h3>
+      <span class="muted" id="pathsSummary"></span></div>
+    <div id="pathsList"></div>
+  </section>
+
+  <!-- OWASP breakdown -->
+  <section class="glass owasp-card" id="owaspCard">
+    <div class="owasp-head"><h3>OWASP Top 10 (2021)</h3><span class="muted" id="owaspSummary"></span></div>
+    <div class="owasp-bars" id="owaspBars"></div>
+  </section>
+
   <!-- RESULTS -->
   <section id="resultsSection" class="hidden">
     <div class="sect-title">
       <h2>Findings <span class="count-pill" id="fCount"></span></h2>
       <div class="acts">
-        <div class="search"><input id="search" type="text" placeholder="filter findings…" spellcheck="false"></div>
-        <a class="mini-btn" id="dlMd" target="_blank">↓ Markdown</a>
-        <a class="mini-btn" id="dlJson" target="_blank">↓ JSON</a>
+        <div class="search"><input id="search" type="text" placeholder="filter findings… (/)" spellcheck="false"></div>
+        <div class="sel sm"><select id="dlFmt" title="Report format">
+          <optgroup label="Report">
+            <option value="html">HTML</option><option value="md">Markdown</option>
+            <option value="json">JSON</option><option value="sarif">SARIF</option><option value="csv">CSV</option>
+          </optgroup>
+          <optgroup label="Fix pack (paste-ready)">
+            <option value="fix-nginx">Fix · nginx</option><option value="fix-apache">Fix · Apache</option>
+            <option value="fix-caddy">Fix · Caddy</option><option value="fix-express">Fix · Express</option>
+            <option value="fix-dns">Fix · DNS records</option>
+          </optgroup>
+        </select></div>
+        <a class="mini-btn" id="dlBtn" target="_blank">↓ Download</a>
       </div>
     </div>
     <div class="filter-row" id="filterRow"></div>
@@ -138,17 +215,30 @@
 
   <!-- HISTORY -->
   <section class="history">
-    <div class="sect-title"><h2>Recent Scans</h2>
-      <button class="mini-btn" id="refreshHist">↻ Refresh</button></div>
+    <div class="sect-title"><h2>Recent Scans <span class="count-pill" id="histHint">select two to compare</span></h2>
+      <div class="acts">
+        <button class="mini-btn hidden" id="compareBtn">⇄ Compare</button>
+        <button class="mini-btn" id="refreshHist">↻ Refresh</button>
+      </div>
+    </div>
     <div id="histList"></div>
   </section>
 
   <footer>
-    <b>FSV v<span id="ver">1.0</span></b> — Web Vulnerability Scanner &amp; MCP Security Toolkit<br>
-    For authorized security testing only · Non-commercial personal-use license
+    <b>FSV v<span id="ver">1.1</span></b> — Web Vulnerability Scanner &amp; MCP Security Toolkit<br>
+    For authorized security testing only · Automated scanning cannot prove the absence of vulnerabilities
   </footer>
 </div>
 
+<!-- diff modal -->
+<div class="modal-back" id="diffModal">
+  <div class="glass modal" id="diffBox">
+    <div class="modal-head"><h3 id="diffTitle">Scan comparison</h3><button class="icon-btn" id="diffClose">✕</button></div>
+    <div id="diffBody"></div>
+  </div>
+</div>
+
+<!-- finding triage menu template is built in JS -->
 <script src="/static/app.js"></script>
 </body>
 </html>

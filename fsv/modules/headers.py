@@ -7,6 +7,9 @@ from fsv.config import SECURITY_HEADERS
 
 class HeadersScanner(BaseScanner):
     name = "headers"
+    category    = "passive"
+    scope       = "url"
+    description = "Missing/weak HTTP security headers (HSTS, CSP, X-Frame-Options)"
 
     async def scan(self, url: str) -> list[Finding]:
         status, headers, _ = await self.fetch(url)

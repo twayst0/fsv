@@ -26,6 +26,7 @@ class WAFScanner(BaseScanner):
     name     = "waf_detect"
     category = "passive"
     scope    = "site"
+    description = "WAF/CDN fingerprinting"
 
     async def scan(self, url: str) -> list[Finding]:
         status, headers, body = await self.fetch(url)

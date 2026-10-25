@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 from fsv.core.scanner import BaseScanner
-from fsv.core.models import Finding, Severity
+from datetime import date
+
+from fsv.core import eol
+from fsv.core.models import Confidence, Finding, Severity
 from fsv.config import TECH_SIGNATURES
 
 
 class TechScanner(BaseScanner):
     name = "tech"
+    category    = "passive"
+    scope       = "site"
+    description = "Technology fingerprint + outdated-software hints"
+
+    @staticmethod
+    def _today() -> date:
+        return date.today()            # indirection so tests can pin the date
 
     async def scan(self, url: str) -> list[Finding]:
         status, headers, body = await self.fetch(url)
@@ -24,37 +34,17 @@ class TechScanner(BaseScanner):
                         detected.append(tech)
                     break
 
-        if not detected:
+        # end-of-life software the response itself discloses (dated table, see core/eol.py)
+        eol_hits = []
+        for prod, (ver, where) in eol.products_from(headers, body).items():
+            info = eol.check(prod, ver, self._today())
+            if info:
+                eol_hits.append((info, where))
+
+        if not detected and not eol_hits:
             return []
 
-        # Check for outdated versions (simple heuristic)
-        outdated_warnings = []
-        body_lower = body.lower()
-        headers_str = " ".join(f"{k}:{v}" for k, v in headers.items()).lower()
-        combined = body_lower + " " + headers_str
-
-        # WordPress version detection
-        if "WordPress" in detected:
-            import re
-            wp_match = re.search(r'wordpress[/\s]+(\d+\.\d+[\.\d]*)', combined)
-            if wp_match:
-                outdated_warnings.append(f"WordPress {wp_match.group(1)} detected — verify it's up to date.")
-
-        # PHP version
-        php_val = self._header(headers, "X-Powered-By") or ""
-        php_match = None
-        if "PHP" in detected and "php/" in php_val.lower():
-            import re
-            php_match = re.search(r'php/(\d+\.\d+)', php_val, re.IGNORECASE)
-            if php_match:
-                ver = php_match.group(1)
-                major, minor = map(int, ver.split(".")[:2])
-                if major < 8:
-                    outdated_warnings.append(
-                        f"PHP {ver} detected — PHP 7.x reached end-of-life. Upgrade to PHP 8.x."
-                    )
-
-        findings: list[Finding] = [
+        findings: list[Finding] = [] if not detected else [
             Finding(
                 title       = "Technology Stack Identified",
                 severity    = Severity.INFO,
@@ -74,17 +64,29 @@ class TechScanner(BaseScanner):
             )
         ]
 
-        for warn in outdated_warnings:
+        for info, where in eol_hits:
+            sev = Severity.HIGH if info.years_past >= 2 else Severity.MEDIUM
             findings.append(Finding(
-                title       = "Potentially Outdated Software Detected",
-                severity    = Severity.MEDIUM,
+                title       = f"End-of-Life Software: {info.label}",
+                severity    = sev,
+                confidence  = Confidence.FIRM,
                 url         = url,
                 module      = self.name,
-                description = warn,
-                evidence    = warn,
-                recommendation = "Update to the latest stable version immediately.",
-                references  = ["https://endoflife.date/"],
+                description = (
+                    f"{info.label} (disclosed in the {where}) stopped receiving security fixes "
+                    + (f"no later than {info.eol.isoformat()}" if info.approx else f"on {info.eol.isoformat()}")
+                    + f" — at least {info.years_past:g} year(s) ago. Every vulnerability "
+                    "found since then is permanent, and public exploit code for old versions is "
+                    "readily available. (Some distributions back-port fixes into old version "
+                    "numbers; verify with your vendor if you rely on that.)"),
+                evidence    = (f"{where}: {info.label}\nEnd of security support: "
+                               f"{'no later than ' if info.approx else ''}{info.eol.isoformat()}"),
+                recommendation = (
+                    f"Upgrade to a supported {eol.DISPLAY.get(info.product, info.product)} release. "
+                    "Until then, hide the version banner and restrict exposure (WAF, network ACLs)."),
+                references  = [f"https://endoflife.date/{info.product}"],
                 cwe         = "CWE-1104",
-            ))
+                extra       = {"product": info.product, "version": info.version,
+                               "eol": info.eol.isoformat()}))
 
         return findings

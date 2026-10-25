@@ -27,6 +27,9 @@ DANGEROUS = {
 
 class HTTPMethodsScanner(BaseScanner):
     name = "http_methods"
+    category    = "passive"
+    scope       = "site"
+    description = "Dangerous HTTP methods (TRACE, PUT, DELETE, CONNECT)"
 
     async def scan(self, url: str) -> list[Finding]:
         parsed   = urlparse(url)
