@@ -1,7 +1,7 @@
 # Contributing
 
-Thanks for helping. Before your first pull request is merged, please agree to the
-**Contributor License Agreement** in [CLA.md](CLA.md) — one line in the PR description is enough.
+Thanks for helping. Before your first pull request is merged, please sign the
+**Contributor License Agreement** ([CLA.md](CLA.md)) — CLA Assistant asks you on the pull request; one click.
 Questions or ideas first? Reach the maintainer at **statways1707@gmail.com** or on Discord **.tways**.
 
 ```bash
