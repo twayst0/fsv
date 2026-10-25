@@ -1,6 +1,11 @@
 # Changelog
 
 ## 2.1.0
+**Packaging & project**
+- Published as `pip install fsv`: PEP 621 `pyproject.toml` (single version source, requirements.txt as the dependency list), PyPI page `docs/PYPI.md`, release workflow with Trusted Publishing (`.github/workflows/publish.yml`), and a CI job that builds, `twine check`s and test-installs the wheel on every push.
+- Fixed: the dependency said `mcp>=1.1`, but `fsv-mcp` needs `mcp.server.mcpserver`, which only exists from mcp 2.0 — an existing mcp 1.x install would have broken the MCP server.
+- Contact details, CLA draft (`CLA.md`), private security reporting by email.
+
 **MCP, supply chain, robustness**
 - `supply_chain` module (32 modules): scripts/styles from compromised or abandoned CDNs (polyfill.io and its sister domains, rawgit) or from expired domains anyone can register — guarded against filtered resolvers that answer NXDOMAIN for everything (found when the first real-world run flagged jquery.com).
 - MCP: `security_review` prompt (authorization-first guided review), `fsv_verify_ownership` tool, `fsv mcp-config --client claude-code|claude-desktop|cursor|vscode`; end-to-end stdio test.

@@ -6,6 +6,7 @@ venv
 *.pyc
 tests
 docs
+!docs/PYPI.md
 *.db
 .pytest_cache
 .fsv

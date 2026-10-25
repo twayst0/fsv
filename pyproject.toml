@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fsv"
+dynamic = ["version", "dependencies"]
+description = "Web security scanner + MCP server: dangling DNS, orphaned buckets, compromised script CDNs, debug mode, attack paths — with paste-ready fixes."
+readme = "docs/PYPI.md"
+requires-python = ">=3.11"
+license = "LicenseRef-FSV-Personal-Use-1.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Anıl Kara (tways)", email = "statways1707@gmail.com" }]
+maintainers = [{ name = "Anıl Kara (tways)", email = "statways1707@gmail.com" }]
+keywords = [
+    "security", "scanner", "vulnerability", "dast", "owasp", "mcp", "model-context-protocol",
+    "subdomain-takeover", "supply-chain", "spf", "dmarc", "appsec", "devsecops",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Security",
+]
+
+[project.urls]
+Homepage = "https://github.com/twayst0/fsv"
+Documentation = "https://github.com/twayst0/fsv/tree/main/docs"
+Changelog = "https://github.com/twayst0/fsv/blob/main/CHANGELOG.md"
+Issues = "https://github.com/twayst0/fsv/issues"
+Security = "https://github.com/twayst0/fsv/blob/main/SECURITY.md"
+
+[project.scripts]
+fsv = "fsv.cli:cli"
+fsv-mcp = "fsv.mcp.server:run"
+fsv-web = "fsv.web.app:run"
+
+[tool.setuptools.dynamic]
+version = { attr = "fsv.__version__" }
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.packages.find]
+include = ["fsv*"]
+
+[tool.setuptools.package-data]
+fsv = ["web/static/*"]

@@ -1,7 +1,11 @@
 # Security policy
 
 ## Reporting a vulnerability in FSV
-Please report privately — do not open a public issue. Use GitHub's **"Report a vulnerability"** (Security → Advisories) on this repository.
+Please report privately — do not open a public issue. Either:
+
+- GitHub's **"Report a vulnerability"** (Security → Advisories) on this repository, or
+- email **statways1707@gmail.com** (subject: `FSV security`), or message **.tways** on Discord to arrange a private channel.
+
 Include the version (`fsv --version`), what you did, what you expected, and what happened. We aim to acknowledge within 3 working days.
 
 In scope: the dashboard / API (auth bypass, CSRF, SSRF, injection, path traversal), the MCP server, the ownership-verification and

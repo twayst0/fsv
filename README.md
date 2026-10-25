@@ -29,7 +29,8 @@
   <a href="#in-ci">CI</a> ·
   <a href="#fsv-and-owasp-zap">FSV &amp; ZAP</a> ·
   <a href="#limits--what-fsv-is-not">Limits</a> ·
-  <a href="#documentation">Docs</a>
+  <a href="#documentation">Docs</a> ·
+  <a href="#contact">Contact</a>
 </p>
 
 > ### ⚠ Authorized use only
@@ -43,7 +44,7 @@ Point Claude, Cursor or VS Code at FSV and ask it to review **your** site. The a
 authorization, runs a passive check, then a full scan, leads with attack paths and hands you paste-ready fixes.
 
 ```bash
-pip install -e .                 # from a clone of this repository (see Install)
+pip install fsv
 fsv mcp-config --client claude-code     # prints:  claude mcp add fsv -- /path/to/fsv-mcp
 fsv mcp-config --client claude-desktop  # or cursor · vscode — prints the JSON to paste
 ```
@@ -147,11 +148,11 @@ Liquid-glass UI with live progress (survives a page reload), the attack-path pan
 ## Install
 
 ```bash
-git clone <this repository> && cd fsv
-./install.sh && source .venv/bin/activate
-fsv doctor        # checks Python, dependencies, DNS, database, plugins
+pip install fsv          # Python 3.11+  ·  pipx install fsv  keeps it isolated
+fsv doctor               # checks Python, dependencies, DNS, database, plugins
 ```
-Prefer to do it by hand? `python -m venv .venv && . .venv/bin/activate && pip install -e .`
+
+From source: `git clone https://github.com/twayst0/fsv && cd fsv && ./install.sh` (or `pip install -e .`).
 
 Requires **Python 3.11+**. Docker: see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) (`docker compose up`).
 
@@ -305,6 +306,16 @@ One engine, four front doors. Address policy and proof of control live in the en
 [Detections](docs/DETECTIONS.md) · [Architecture](docs/ARCHITECTURE.md) · [Writing modules](docs/WRITING_MODULES.md) · [Deploying safely](docs/DEPLOYMENT.md) · [Security policy](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
 <sub>The animated SVGs and screenshots above are generated from a real scan: <code>scripts/build_readme_assets.sh --screenshots</code>.</sub>
+
+## Contact
+
+**Anıl Kara (tways)** — author and maintainer
+
+- Email: **statways1707@gmail.com**
+- Discord: **.tways**
+- Security issues: please report privately (see [SECURITY.md](SECURITY.md)), not in a public issue.
+
+Questions, collaboration and licensing enquiries are welcome by email or Discord.
 
 ## License
 

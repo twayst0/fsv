@@ -1,10 +1,14 @@
 # Contributing
 
+Thanks for helping. Before your first pull request is merged, please agree to the
+**Contributor License Agreement** in [CLA.md](CLA.md) — one line in the PR description is enough.
+Questions or ideas first? Reach the maintainer at **statways1707@gmail.com** or on Discord **.tways**.
+
 ```bash
 git clone … && cd fsv
 python -m venv .venv && . .venv/bin/activate
 pip install -e . -r requirements-dev.txt
-pytest -q                 # 300+ tests, no network needed
+pytest -q                 # 360+ tests, no network needed
 fsv doctor                # check your environment
 ```
 
@@ -26,3 +30,8 @@ node scripts/svg_frames.cjs docs/assets/terminal.svg 1,6,12,18 /tmp/frame   # pr
 Edit `scripts/make_readme_assets.py`, never the SVG output. Keep them self-contained (no scripts, fonts or external URLs), keep the
 un-animated state readable, and let `tests/test_assets.py` tell you if you broke a rule. `examples/demo_site.py` is the scan target
 used for the screenshots — its secrets are fake and it only listens on loopback.
+
+## Releasing (maintainer)
+1. Bump `__version__` in `fsv/__init__.py` and add a `CHANGELOG.md` entry.
+2. Create a GitHub release with tag `vX.Y.Z` — `.github/workflows/publish.yml` builds, checks, test-installs
+   and uploads to PyPI through Trusted Publishing (no API token stored anywhere).

@@ -1,0 +1,55 @@
+name: Publish to PyPI
+
+# Runs when a GitHub release is published (tag vX.Y.Z). Uses PyPI Trusted Publishing:
+# no API token is stored — PyPI trusts this workflow in this repository (configure once on pypi.org).
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Version in the tag matches the package
+        if: github.event_name == 'release'
+        run: |
+          pkg=$(python -c "import re;print(re.search(r'__version__ = \"(.+?)\"', open('fsv/__init__.py').read()).group(1))")
+          tag="${GITHUB_REF_NAME#v}"
+          [ "$pkg" = "$tag" ] || { echo "::error::tag $GITHUB_REF_NAME does not match fsv.__version__ $pkg"; exit 1; }
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          twine check --strict dist/*
+      - name: Install the wheel in a clean venv and smoke-test it
+        run: |
+          python -m venv /tmp/v && /tmp/v/bin/pip install dist/*.whl
+          cd /tmp && /tmp/v/bin/fsv --version && /tmp/v/bin/fsv modules --json > /dev/null
+          /tmp/v/bin/python -c "import fsv.mcp.server, fsv.web.app"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/fsv
+    permissions:
+      id-token: write          # Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

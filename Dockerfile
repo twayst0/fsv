@@ -3,7 +3,8 @@
 FROM python:3.12-slim AS build
 WORKDIR /src
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1
-COPY requirements.txt setup.py README.md ./
+COPY requirements.txt pyproject.toml LICENSE ./
+COPY docs/PYPI.md ./docs/PYPI.md
 COPY fsv ./fsv
 RUN python -m venv /opt/venv \
  && /opt/venv/bin/pip install . \
