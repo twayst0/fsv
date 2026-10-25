@@ -97,6 +97,60 @@ class Loop:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# 0) LOGO — wire-frame globe with four nodes (vector redraw of the FSV mark)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _ellipse_point(cx, cy, rx, ry, rot_deg, t_deg):
+    t, r = math.radians(t_deg), math.radians(rot_deg)
+    x, y = rx * math.cos(t), ry * math.sin(t)
+    return cx + x * math.cos(r) - y * math.sin(r), cy + x * math.sin(r) + y * math.cos(r)
+
+
+def logo_defs(p: str) -> str:
+    """Gradients for one logo instance; `p` prefixes ids so several logos can share a file."""
+    return (f'<linearGradient id="{p}band" x1="0" y1="0" x2="1" y2="1">'
+            f'<stop offset="0" stop-color="#ffffff"/><stop offset=".45" stop-color="#e4e4e9"/>'
+            f'<stop offset=".7" stop-color="#a9a9b2"/><stop offset="1" stop-color="#f2f2f5"/></linearGradient>'
+            f'<radialGradient id="{p}node" cx=".38" cy=".32" r=".75"><stop offset="0" stop-color="#ffffff"/>'
+            f'<stop offset=".6" stop-color="#e2e2e7"/><stop offset="1" stop-color="#a4a4ad"/></radialGradient>')
+
+
+def logo_group(p: str, cx: float, cy: float, R: float, edge: str = "#8d8d96") -> str:
+    """The mark centred at (cx, cy) with outer radius R. `edge` is a thin outline that keeps the
+    silver bands visible on white backgrounds too."""
+    w = R * .085
+    rings = [  # (rx, ry, rotation, dy) relative to R
+        (1.0, 1.0, 0, 0),             # outer sphere
+        (.52, .96, 8, -.02),          # meridian
+        (.98, .32, -14, -.10),        # tilted equator (upper band)
+        (.98, .36, 4, .16),           # lower band
+    ]
+    out = []
+    for rx, ry, rot, dy in rings:
+        e = (f'cx="{cx:.1f}" cy="{cy + dy*R:.1f}" rx="{rx*R:.1f}" ry="{ry*R:.1f}" '
+             f'transform="rotate({rot} {cx:.1f} {cy + dy*R:.1f})" fill="none"')
+        out.append(f'<ellipse {e} stroke="{edge}" stroke-opacity=".55" stroke-width="{w + 2.2:.1f}"/>'
+                   f'<ellipse {e} stroke="url(#{p}band)" stroke-width="{w:.1f}"/>')
+    # the axis is a thin rounded rect, not a <line>: a zero-width bounding box can't carry a gradient
+    y0, h = cy - .95*R, 1.92*R
+    out.append(f'<rect x="{cx - w/2 - 1.1:.1f}" y="{y0 - 1.1:.1f}" width="{w + 2.2:.1f}" height="{h + 2.2:.1f}" rx="{w/2 + 1.1:.1f}" fill="{edge}" fill-opacity=".55"/>'
+               f'<rect x="{cx - w/2:.1f}" y="{y0:.1f}" width="{w:.1f}" height="{h:.1f}" rx="{w/2:.1f}" fill="url(#{p}band)"/>')
+    nodes = [_ellipse_point(cx, cy - .10*R, .98*R, .32*R, -14, -58),   # upper right, on the tilted band
+             _ellipse_point(cx, cy - .10*R, .98*R, .32*R, -14, 140),   # left
+             _ellipse_point(cx, cy + .16*R, .98*R, .36*R, 4, 52),      # lower right, on the lower band
+             (cx, cy + .97*R)]                                         # south pole
+    for x, y in nodes:
+        out.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{R*.085:.1f}" fill="url(#{p}node)" stroke="{edge}" stroke-opacity=".7" stroke-width="1.2"/>')
+    return "<g>" + "".join(out) + "</g>"
+
+
+def logo() -> str:
+    W = 256
+    body = logo_group("lg", 128, 126, 104)
+    return svg(W, W, "FSV logo", "A wire-frame globe of silver bands with four nodes.", logo_defs("lg"), body)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # 1) HERO — radar sweep that "finds" things
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -139,7 +193,7 @@ def hero() -> str:
 <linearGradient id="sw" gradientUnits="userSpaceOnUse" x1="{cx}" y1="{cy-R}" x2="{sx:.1f}" y2="{sy:.1f}">
   <stop offset="0" stop-color="#ffffff" stop-opacity=".55"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
 <filter id="blur" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="30"/></filter>
-<clipPath id="disc"><circle cx="{cx}" cy="{cy}" r="{R}"/></clipPath>"""
+<clipPath id="disc"><circle cx="{cx}" cy="{cy}" r="{R}"/></clipPath>""" + logo_defs("hl_")
     body = f"""
 <rect width="{W}" height="{H}" fill="url(#bgm)"/>
 <rect width="{W}" height="{H}" fill="url(#brush)"/>
@@ -153,9 +207,10 @@ def hero() -> str:
 
 <rect x="64" y="58" width="68" height="68" rx="18" fill="url(#glass)" stroke="url(#rim)"/>
 <path d="M82 58.8 H114" stroke="#fff" stroke-opacity=".5"/>
-<text x="98" y="101" text-anchor="middle" font-size="22" class="b" letter-spacing="1" style="fill:url(#chrome)">FSV</text>
-<text x="150" y="84" font-size="13" class="mut" letter-spacing="3">WEB SECURITY SCANNER  ·  MCP TOOLKIT</text>
-<text x="150" y="108" font-size="13" class="m mut">v2.1 · detection-only · local-first</text>
+{logo_group("hl_", 98, 92, 25, edge="#3a3a42")}
+<text x="150" y="84" font-size="15" class="b" letter-spacing="4" style="fill:url(#chrome)">FSV</text>
+<text x="206" y="84" font-size="13" class="mut" letter-spacing="3">WEB SECURITY SCANNER  ·  MCP TOOLKIT</text>
+<text x="150" y="108" font-size="13" class="m mut">v2.2 · detection-only · local-first</text>
 
 <text x="62" y="212" font-size="58" class="b" letter-spacing="-1.5" style="fill:url(#chrome)">Finds what</text>
 <text x="62" y="276" font-size="58" class="b" letter-spacing="-1.5" style="fill:url(#hl)">checklists miss.</text>
@@ -443,11 +498,14 @@ def detections() -> str:
 def main() -> None:
     os.makedirs(ASSETS, exist_ok=True)
     scan = json.load(open(os.path.join(ASSETS, "demo-scan.json"), encoding="utf-8"))
-    for name, content in (("hero", hero()), ("terminal", terminal(scan)), ("attack-path", attack_path()),
+    for name, content in (("logo", logo()), ("hero", hero()), ("terminal", terminal(scan)), ("attack-path", attack_path()),
                           ("pipeline", pipeline()), ("detections", detections())):
         path = os.path.join(ASSETS, f"{name}.svg")
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(content)
+        if name == "logo":   # the dashboard serves the same mark (favicon + header)
+            with open(os.path.join(HERE, "..", "fsv", "web", "static", "logo.svg"), "w", encoding="utf-8") as fh:
+                fh.write(content)
         print(f"{name}.svg  {len(content)/1024:.1f} KB")
 
 

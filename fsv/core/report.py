@@ -315,7 +315,7 @@ def generate_sarif(result: ScanResult) -> str:
             "tool": {"driver": {
                 "name": "FSV",
                 "version": __version__,
-                "informationUri": "https://github.com/fsvproject/fsv",
+                "informationUri": "https://github.com/twayst0/fsv",
                 "rules": list(rules.values()),
             }},
             "invocations": [{

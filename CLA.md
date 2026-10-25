@@ -2,8 +2,8 @@
 
 Thank you for contributing to FSV ("the Project"), owned and maintained by Anıl Kara, GitHub `twayst0`
 ("the Maintainer"). This Agreement makes clear what rights you grant in your Contributions, so the Project
-can keep distributing them under its own licence — today the FSV Personal Use License, which forbids
-commercial use — and so no contribution creates co-ownership of the Project.
+can keep distributing them under its own licence — today the GNU AGPL-3.0, alongside commercial licences
+the Maintainer may grant — and so no contribution creates co-ownership of the Project.
 
 ## 1. Definitions
 **"You"** — the individual who submits a Contribution.
@@ -15,9 +15,9 @@ You grant the Maintainer a perpetual, worldwide, non-exclusive, no-charge, royal
 licence to use, reproduce, modify, prepare derivative works of, publicly display, publicly perform,
 **sublicense and distribute** Your Contributions and derivative works, **under the Project's licence or any
 other licence terms the Maintainer chooses**, now or in the future.
-Your Contribution is distributed as part of the Project under the Project's licence (currently the FSV
-Personal Use License, see `LICENSE`); this Agreement does not license it to anyone else under MIT or any
-other licence.
+Your Contribution is distributed as part of the Project under the Project's licence (currently the GNU
+AGPL-3.0, see `LICENSE`). The Maintainer may also license it to others under different terms, including
+commercial licences; You receive no share of any income from that (section 4).
 
 ## 3. Patent licence
 You grant the Maintainer and recipients of the Project a perpetual, worldwide, non-exclusive, no-charge,

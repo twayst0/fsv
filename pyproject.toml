@@ -8,7 +8,7 @@ dynamic = ["version", "dependencies"]
 description = "Web security scanner + MCP server: dangling DNS, orphaned buckets, compromised script CDNs, debug mode, attack paths — with paste-ready fixes."
 readme = "docs/PYPI.md"
 requires-python = ">=3.11"
-license = "LicenseRef-FSV-Personal-Use-1.0"
+license = "AGPL-3.0-only"
 license-files = ["LICENSE"]
 authors = [{ name = "Anıl Kara (tways)", email = "statways1707@gmail.com" }]
 maintainers = [{ name = "Anıl Kara (tways)", email = "statways1707@gmail.com" }]

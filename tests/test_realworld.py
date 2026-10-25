@@ -285,3 +285,15 @@ async def test_email_detection_still_works():
     http = Routes({"https://app.test/": (200, "<p>write to security@example.co.uk</p>", {"Content-Type": "text/html"})})
     out = await InfoDisclosureScanner(http, CFG).scan("https://app.test/")
     assert any("security@example.co.uk" in f.evidence for f in out)
+
+
+def test_badge_is_dated_wellformed_svg():
+    import xml.etree.ElementTree as ET
+    from fsv.core import badge
+    from fsv.core.models import ScanResult
+    r = ScanResult(scan_id="x", target="https://a.test", status="completed", started_at="2026-10-25T10:00:00+00:00",
+                   finished_at="2026-10-25T10:01:00+00:00")
+    svg = badge.render(r)
+    root = ET.fromstring(svg)
+    assert root.tag.endswith("svg") and "2026-10-25" in svg and f"{r.grade} ·" in svg
+    assert "<script" not in svg

@@ -59,5 +59,5 @@ confidence, CWE, OWASP Top 10 category and remediation; reports in Markdown, JSO
 - Security policy: https://github.com/twayst0/fsv/blob/main/SECURITY.md
 - Contact: statways1707@gmail.com · Discord **.tways**
 
-**License:** FSV Personal Use License — free for personal, educational and non-commercial security research.
-Commercial use is prohibited (see `LICENSE`); licensing questions: statways1707@gmail.com.
+**License:** GNU AGPL-3.0 — free for everyone; modified versions you distribute or run as a service must stay open.
+Commercial licences without the AGPL obligations: statways1707@gmail.com.

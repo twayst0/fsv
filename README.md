@@ -9,7 +9,7 @@
   <img alt="MCP server" src="https://img.shields.io/badge/MCP-ready-e5e5e5?style=flat-square&labelColor=000000">
   <img alt="detection only" src="https://img.shields.io/badge/mode-detection--only-9a9aa3?style=flat-square&labelColor=000000">
   <img alt="tests" src="https://img.shields.io/badge/tests-360%2B-9a9aa3?style=flat-square&labelColor=000000">
-  <img alt="license: personal use" src="https://img.shields.io/badge/license-personal%20use-5f5f68?style=flat-square&labelColor=000000">
+  <img alt="license: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-5f5f68?style=flat-square&labelColor=000000">
 </p>
 
 <p align="center">
@@ -134,6 +134,7 @@ Liquid-glass UI with live progress (survives a page reload), the attack-path pan
 ## Features
 
 - **Finds the pages first** — besides links: robots.txt, sitemaps, routes leaked by debug pages, and API paths quoted in your JavaScript; action-like paths are never requested. `--seed` for anything else.
+- **A badge for your README** — `fsv badge <scan_id>` writes a dated grade badge (`FSV security | A · 2026-10-25`); regenerate it from CI.
 - **Fix packs** — turn findings into **nginx / Apache / Caddy / Express / DNS** configuration (`fsv fixes <scan> nginx`). Only what was actually found; CSP is emitted report-only.
 - **CI-ready** — `fsv.toml`, **baselines** (gate only on *new* findings), `--fail-on`, SARIF for GitHub code scanning, and a ready-made **GitHub Action**.
 - **Triage that sticks** — false positive / accepted risk / fixed / confirmed, stored per host by stable fingerprint, re-applied to later scans, excluded from the score. Diff any two scans; per-host trend.
@@ -213,8 +214,8 @@ fsv scan staging.example.com --authorize                                        
 ```
 
 ```yaml
-# .github/workflows/security.yml   (the action lives in this repository's action.yml)
-- uses: <owner>/fsv@<tag-or-sha>
+# .github/workflows/security.yml
+- uses: twayst0/fsv@v2.1.0          # pin a release tag (or a commit SHA)
   with:
     target: https://staging.example.com
     authorized: "true"          # you confirm you may test this target
@@ -320,8 +321,10 @@ Questions, collaboration and licensing enquiries are welcome by email or Discord
 
 ## License
 
-**FSV Personal Use License** — free for personal, educational, and non-commercial
-security research. **Commercial use is prohibited.** See [LICENSE](LICENSE).
+**GNU AGPL-3.0** — free to use, study, modify and share, for anyone, including companies. If you distribute
+a modified FSV or offer it to others as a network service, your changes must be published under the same
+licence. Need to embed FSV in a closed product or service? Commercial licences are available —
+**statways1707@gmail.com**. Copyright © 2026 twayst0 (Anıl Kara). See [LICENSE](LICENSE).
 
 ## Disclaimer
 

@@ -13,7 +13,7 @@ DEFAULT_MAX_URLS  = 50      # max URLs to crawl per scan
 DEFAULT_THREADS   = 10      # concurrent requests
 USER_AGENT        = (
     "FSV/1.0 (Security Scanner — authorized use only; "
-    "https://github.com/fsvproject/fsv)"
+    "https://github.com/twayst0/fsv)"
 )
 
 # ── Module toggles ────────────────────────────────────────

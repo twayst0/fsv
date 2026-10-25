@@ -9,9 +9,9 @@ reports.
 Use ONLY against systems you own or are explicitly authorized to test.
 """
 
-__version__ = "2.1.1"
+__version__ = "2.2.0"
 __author__  = "Anıl Kara"
-__license__ = "FSV Personal Use License (non-commercial)"
+__license__ = "AGPL-3.0-only (commercial licences available)"
 
 BANNER = r"""
   ███████╗███████╗██╗   ██╗

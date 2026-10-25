@@ -53,3 +53,23 @@ jobs:
           name: dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    # Run from the Actions tab, "Publish to PyPI" also creates the tag + GitHub release afterwards,
+    # so one button ships a version. (A release published by hand already exists — nothing to do.)
+    if: github.event_name == 'workflow_dispatch'
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Create tag and release from CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ver=$(python3 -c "import re;print(re.search(r'__version__ = \"(.+?)\"', open('fsv/__init__.py').read()).group(1))")
+          if gh release view "v$ver" >/dev/null 2>&1; then echo "release v$ver exists"; exit 0; fi
+          awk -v v="## $ver" '$0==v{on=1;next} on&&/^## /{exit} on' CHANGELOG.md > notes.md
+          printf '\n---\n`pip install fsv==%s`  ·  https://pypi.org/project/fsv/%s/\n' "$ver" "$ver" >> notes.md
+          gh release create "v$ver" --target "$GITHUB_SHA" --title "FSV $ver" --notes-file notes.md

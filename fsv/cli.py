@@ -464,6 +464,22 @@ def fixes(scan_id, server, output):
 
 
 @cli.command()
+@click.argument("scan_id")
+@click.option("-o", "--output", default="fsv-badge.svg", show_default=True, help="Where to write the SVG.")
+def badge(scan_id, output):
+    """Write a dated security-grade badge (SVG) for a scan, for your README."""
+    from fsv.core import badge as badge_mod
+    result = asyncio.run(db.get_scan(scan_id))
+    if result is None:
+        console.print("[red]Scan not found.[/]"); sys.exit(1)
+    with open(output, "w", encoding="utf-8") as f:
+        f.write(badge_mod.render(result))
+    console.print(f"[green]✓[/] {output}  —  grade {result.grade}. Add to your README:\n"
+                  f"  ![FSV security]({output})\n"
+                  "[dim]Re-scan and regenerate it regularly (e.g. in CI): the badge shows the scan date.[/]")
+
+
+@cli.command()
 @click.argument("host")
 @click.option("--check", is_flag=True, help="Look for the published proof now and record it if found.")
 def verify(host, check):

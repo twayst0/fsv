@@ -1,6 +1,15 @@
 # Changelog
 
-## 2.1.1
+## 2.2.0
+**Licence: GNU AGPL-3.0** (was a custom non-commercial licence). FSV is now open source: free for everyone,
+companies included; whoever distributes a modified FSV or runs it as a network service must publish their
+changes. Commercial licences without the AGPL obligations are available from the copyright holder (the CLA keeps
+that possible). Releases up to 2.1.0 remain under their original licence.
+
+- **Logo**: the FSV globe mark, as a vector (`docs/assets/logo.svg`) in the README hero, the dashboard header and favicon.
+- **`fsv badge <scan_id>`**: a dated security-grade badge (SVG) for your own README.
+- Fixed: the dashboard's GitHub button, the SARIF `informationUri` and the User-Agent pointed at a repository that isn't FSV's; the README's Action example now uses `twayst0/fsv@v2.1.0`.
+- One-button release: running "Publish to PyPI" from the Actions tab uploads to PyPI, then creates the tag and GitHub release.
 - **Proxy support**: `--proxy http://host:port` or `--proxy env` (HTTPS_PROXY/HTTP_PROXY, honours NO_PROXY); `proxy` in `fsv.toml`. Refused on shared deployments (`FSV_BLOCK_PRIVATE`), where it would blind the private-address guard. `fsv doctor` points it out when a proxy is set in the environment. Tested end to end with a target name only the proxy can resolve.
 - Fixed: through a proxy the bare target `http://host` was requested without a path, which stricter proxies reject.
 - Release workflow (`.github/workflows/release.yml`) creates the tag and GitHub release with notes from this file.
