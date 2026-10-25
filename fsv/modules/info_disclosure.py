@@ -26,9 +26,12 @@ LEAK_PATTERNS: list[tuple[str, str, Severity]] = [
      "Bearer token in response", Severity.MEDIUM),
     (r"eyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}",
      "JSON Web Token (JWT)", Severity.LOW),
-    (r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}",
+    # possessive quantifiers: no backtracking, so a megabyte of letters can't stall the scan
+    (r"(?<![a-zA-Z0-9._%+\-])[a-zA-Z0-9._%+\-]{1,64}+@[a-zA-Z0-9\-]{1,63}+(?:\.[a-zA-Z0-9\-]{1,63}+)++(?<=[a-zA-Z]{2})",
      "Email address exposure", Severity.INFO),
 ]
+
+MAX_SCAN = 600_000   # characters of each response examined
 
 # Verbose framework error/stack-trace signatures.
 STACK_TRACE_SIGNATURES = [
@@ -58,6 +61,7 @@ class InfoDisclosureScanner(BaseScanner):
         status, headers, body = await self.fetch(url)
         if status == -1 or not body:
             return []
+        body = body[:MAX_SCAN]
 
         findings: list[Finding] = []
         seen_titles: set[str] = set()

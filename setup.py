@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="fsv",
-    version="2.0.0",
+    version="2.1.0",
     description="FSV — Web Vulnerability Scanner & MCP Security Tool",
     author="Anıl Kara",
     python_requires=">=3.11",

@@ -192,7 +192,7 @@ class TakeoverScanner(BaseScanner):
             reg_unregistered = False
             if final.nxdomain:
                 rd = registrable_domain(chain[-1])
-                if rd:
+                if rd and dnsutil.nxdomain_is_meaningful():
                     reg_unregistered = dnsutil.resolve(rd, "NS", 3.0).nxdomain
             return {"host": h, "chain": chain, "final_status": final.status,
                     "target_domain_unregistered": reg_unregistered}

@@ -87,8 +87,23 @@ _backend: Backend = _dnspython_backend
 
 def set_backend(fn: Backend | None) -> None:
     """Install a fake backend (tests) or restore the real one with None."""
-    global _backend
+    global _backend, _trust
     _backend = fn or _dnspython_backend
+    _trust = None
+
+
+# Names that certainly exist. Filtered/captive resolvers (corporate DNS, sandboxes) answer NXDOMAIN
+# for everything outside; behind one, NXDOMAIN proves nothing and no domain may be called unregistered.
+CONTROL_DOMAINS = ("iana.org", "example.com")
+_trust: bool | None = None
+
+
+def nxdomain_is_meaningful(timeout: float = 3.0) -> bool:
+    """True when the resolver answers for names that exist (checked once per backend)."""
+    global _trust
+    if _trust is None:
+        _trust = any(resolve(d, "NS", timeout).ok for d in CONTROL_DOMAINS)
+    return _trust
 
 
 def resolve(name: str, rtype: str, timeout: float = 3.0) -> Answer:

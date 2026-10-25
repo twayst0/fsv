@@ -323,6 +323,46 @@ async def fsv_list_modules() -> str:
     })
 
 
+@mcp.tool(description=(
+    "Prove control of a host so payload-sending scans are allowed on deployments that require it "
+    "(FSV_REQUIRE_VERIFICATION=1). check=false returns the DNS TXT record / HTTP file to publish; "
+    "check=true looks for it and records the proof."))
+async def fsv_verify_ownership(host: str, check: bool = False) -> str:
+    from fsv.core import ownership
+    host = host.split("://", 1)[-1].split("/", 1)[0].lower()
+    bare = host.split(":")[0]
+    secret = await db.get_install_secret()
+    info = ownership.instructions(bare, secret)
+    if not check:
+        return _dump({"host": host, "publish_one_of": info,
+                      "next": f"call fsv_verify_ownership(host='{host}', check=true) once it is live"})
+    method = await ownership.check_proof(bare, secret, netloc=host)
+    if not method:
+        return _dump({"host": host, "verified": False,
+                      "hint": "No proof found yet. DNS changes can take a few minutes to propagate."})
+    await db.add_verified(ownership.verification_domain(bare) if method == "dns" else bare, method)
+    return _dump({"host": host, "verified": True, "method": method, "valid_days": ownership.VALID_DAYS})
+
+
+@mcp.prompt(name="security_review", title="Security review of my site",
+            description="Guided, authorization-first security review of a site you own: quick look, full scan, "
+                        "attack paths first, then paste-ready fixes.")
+def security_review(target: str, server: str = "nginx") -> str:
+    return (
+        f"Run a security review of {target} with the FSV tools.\n"
+        "1. Ask me to confirm I own or am authorized to test this site. Do not continue without a clear yes.\n"
+        f"2. fsv_quick_check on {target} (passive) and summarise the posture in three lines.\n"
+        "3. fsv_scan with profile='balanced'. If the site needs a login, ask me for a TEST account's cookie or "
+        "header, and for pages nothing links to (seed_urls).\n"
+        "4. Lead with attack paths (module 'correlation') and anything critical or high: what it is, why it "
+        "matters for this site, the single cheapest fix. Group the rest by OWASP category; keep info findings brief.\n"
+        f"5. fsv_fixes for '{server}' and give me the snippets with where to put them.\n"
+        "6. Offer to mark anything I say is intended as accepted_risk/false_positive with fsv_triage, and to "
+        "re-scan and fsv_compare_scans after I deploy fixes.\n"
+        "Never produce exploit code; describe impact and remediation only."
+    )
+
+
 def run() -> None:
     """Entry point — runs the MCP server over stdio."""
     mcp.run(transport="stdio")

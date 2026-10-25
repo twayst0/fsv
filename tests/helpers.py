@@ -15,8 +15,10 @@ class FakeDNS:
     Non-CNAME queries follow a CNAME exactly like a real resolver — so a name whose
     CNAME target is missing answers NXDOMAIN, which is what makes dangling aliases visible.
     """
-    def __init__(self, zone: dict[str, dict[str, list[str]]]):
+    def __init__(self, zone: dict[str, dict[str, list[str]]], *, internet: bool = True):
         self.zone = {k.lower(): v for k, v in zone.items()}
+        if internet:   # a working resolver knows the control names (see dnsutil.nxdomain_is_meaningful)
+            self.zone.setdefault("iana.org", {"NS": ["a.iana-servers.net"]})
         self.queries: list[tuple[str, str]] = []
 
     def __call__(self, name: str, rtype: str, timeout: float) -> Answer:

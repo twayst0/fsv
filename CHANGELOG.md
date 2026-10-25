@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## 2.1.0
+**MCP, supply chain, robustness**
+- `supply_chain` module (32 modules): scripts/styles from compromised or abandoned CDNs (polyfill.io and its sister domains, rawgit) or from expired domains anyone can register — guarded against filtered resolvers that answer NXDOMAIN for everything (found when the first real-world run flagged jquery.com).
+- MCP: `security_review` prompt (authorization-first guided review), `fsv_verify_ownership` tool, `fsv mcp-config --client claude-code|claude-desktop|cursor|vscode`; end-to-end stdio test.
+- Engine: a URL that timed out is remembered for the scan — a hanging endpoint now costs one timeout instead of one per module (hostile-server run: 66 s → 4 s); `stats.unresponsive_urls`.
+- `info_disclosure`: the email pattern backtracked quadratically — 33 s on one 2 MB page; now possessive/linear, and bodies are capped at 600 kB.
+- `tests/test_e2e_hostile.py`: whole-engine runs against real local servers that misbehave (catch-all SPA, redirect loop, 20 MB body, hang, 500s).
+- README & visuals: monochrome metallic glass theme, MCP quick start, FSV-and-ZAP comparison.
+
 **Tested against real applications** (OWASP PyGoat, Django) — these came out of it:
 - New `debug_mode` module (31 modules): Django `DEBUG=True`, Werkzeug console, Rails/Symfony/Laravel Ignition/Express/ASP.NET debug error pages — which only appear on errors, so the crawler never saw them.
 - Crawler discovery: robots.txt paths, sitemaps, Django debug-404 route lists, and API paths in same-origin JavaScript (action-like paths such as `/labs/start/…` are never requested). On PyGoat: 3 → 39 URLs. `--seed` / `seeds` / MCP `seed_urls` for pages nothing links to; MCP scans can now be authenticated (`headers`, `cookies`).

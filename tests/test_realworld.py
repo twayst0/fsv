@@ -218,3 +218,70 @@ async def test_crawler_seeds_from_sitemap_scripts_and_debug_page():
         assert want in urls, want
     assert not any("delete-all" in u or "other.test" in u or "labs/start" in u for u in urls)
     assert cr.discovered["sitemap"] == 1 and cr.discovered["javascript"] == 1
+
+
+# ── supply chain ─────────────────────────────────────────────────────────────
+
+from fsv.modules.supply_chain import SupplyChainScanner  # noqa: E402
+from helpers import FakeDNS  # noqa: E402
+
+
+async def test_polyfill_io_and_expired_script_domain_found():
+    FakeDNS({"cdnjs.cloudflare.com": {"A": ["1.1.1.1"]}, "cloudflare.com": {"NS": ["ns.cloudflare.com"], "SOA": ["x"]},
+             "app.test": {"A": ["10.0.0.1"]}}).install()
+    try:
+        page = ('<html><script src="https://cdn.polyfill.io/v3/polyfill.min.js"></script>'
+                '<script src="https://cdnjs.cloudflare.com/ajax/libs/x.js"></script>'
+                '<script src="https://widgets.expired-vendor.com/w.js"></script>'
+                '<link rel="stylesheet" href="https://fonts.gone-vendor.net/f.css">'
+                '<script src="/static/own.js"></script></html>')
+        http = Routes({"https://app.test/": (200, page, {"Content-Type": "text/html"})})
+        out = await SupplyChainScanner(http, CFG).scan("https://app.test/")
+        got = {(f.extra["domain"], f.severity) for f in out}
+        assert got == {("polyfill.io", Severity.CRITICAL), ("expired-vendor.com", Severity.CRITICAL),
+                       ("gone-vendor.net", Severity.HIGH)}
+    finally:
+        from fsv.core import dnsutil
+        dnsutil.set_backend(None)
+
+
+async def test_resolver_errors_never_claim_a_domain_is_unregistered():
+    from fsv.core import dnsutil
+    from fsv.core.dnsutil import Answer
+    dnsutil.set_backend(lambda name, rtype, timeout: Answer("error"))
+    try:
+        page = '<script src="https://widgets.some-vendor.com/w.js"></script>'
+        http = Routes({"https://app.test/": (200, page, {"Content-Type": "text/html"})})
+        assert await SupplyChainScanner(http, CFG).scan("https://app.test/") == []
+    finally:
+        dnsutil.set_backend(None)
+
+
+async def test_resolver_that_denies_everything_claims_nothing():
+    FakeDNS({}, internet=False).install()     # every name NXDOMAIN — a filtered/sandboxed resolver
+    try:
+        page = '<script src="https://code.jquery.com/jquery.js"></script>'
+        http = Routes({"https://app.test/": (200, page, {"Content-Type": "text/html"})})
+        assert await SupplyChainScanner(http, CFG).scan("https://app.test/") == []
+    finally:
+        from fsv.core import dnsutil
+        dnsutil.set_backend(None)
+
+
+# ── performance: hostile bodies must not stall a module ─────────────────────
+
+async def test_info_disclosure_is_linear_on_adversarial_bodies():
+    import time
+    from fsv.modules.info_disclosure import InfoDisclosureScanner
+    for body in ("A" * 2_000_000, "a@" * 1_000_000, ("x" * 60 + "@") * 30_000):
+        http = Routes({"https://app.test/": (200, body, {"Content-Type": "text/html"})})
+        t = time.monotonic()
+        await InfoDisclosureScanner(http, CFG).scan("https://app.test/")
+        assert time.monotonic() - t < 2, "regex backtracking on a large body"
+
+
+async def test_email_detection_still_works():
+    from fsv.modules.info_disclosure import InfoDisclosureScanner
+    http = Routes({"https://app.test/": (200, "<p>write to security@example.co.uk</p>", {"Content-Type": "text/html"})})
+    out = await InfoDisclosureScanner(http, CFG).scan("https://app.test/")
+    assert any("security@example.co.uk" in f.evidence for f in out)

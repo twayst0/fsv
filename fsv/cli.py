@@ -529,6 +529,32 @@ def web():
     run_web()
 
 
+@cli.command("mcp-config")
+@click.option("--client", type=click.Choice(["claude-code", "claude-desktop", "cursor", "vscode", "json"]),
+              default="json", help="Print the snippet for this MCP client.")
+def mcp_config(client):
+    """Print ready-to-paste MCP configuration for Claude Code, Claude Desktop, Cursor or VS Code."""
+    import json as _json
+    import shutil
+    cmd = shutil.which("fsv-mcp") or "fsv-mcp"
+    entry = {"command": cmd}
+    if client == "claude-code":
+        click.echo(f"claude mcp add fsv -- {cmd}")
+        return
+    if client == "vscode":
+        click.echo("# .vscode/mcp.json")
+        click.echo(_json.dumps({"servers": {"fsv": {"type": "stdio", **entry}}}, indent=2))
+        return
+    where = {"claude-desktop": "# Claude Desktop → Settings → Developer → Edit Config (claude_desktop_config.json)",
+             "cursor": "# ~/.cursor/mcp.json"}.get(client)
+    if where:
+        click.echo(where)
+    click.echo(_json.dumps({"mcpServers": {"fsv": entry}}, indent=2))
+    if client == "json":
+        click.echo("\n# Then ask your assistant:  \"Use the security_review prompt on https://my-site.example\"",
+                   err=True)
+
+
 @cli.command("mcp")
 def mcp_cmd():
     """Run the MCP server (stdio)."""

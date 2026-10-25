@@ -4,28 +4,30 @@
 
 <p align="center">
   <a href="https://github.com/twayst0/fsv/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/twayst0/fsv/actions/workflows/ci.yml/badge.svg"></a>
-  <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-3776ab?logo=python&logoColor=white">
-  <img alt="31 modules" src="https://img.shields.io/badge/modules-31-7cf0c0">
-  <img alt="detection only" src="https://img.shields.io/badge/mode-detection--only-30c48d">
-  <img alt="MCP server" src="https://img.shields.io/badge/MCP-server-8a7cff">
-  <img alt="license: personal use" src="https://img.shields.io/badge/license-personal%20use-ff9a42">
+  <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-111111?style=flat-square&logo=python&logoColor=white&labelColor=000000">
+  <img alt="32 modules" src="https://img.shields.io/badge/modules-32-e5e5e5?style=flat-square&labelColor=000000">
+  <img alt="MCP server" src="https://img.shields.io/badge/MCP-ready-e5e5e5?style=flat-square&labelColor=000000">
+  <img alt="detection only" src="https://img.shields.io/badge/mode-detection--only-9a9aa3?style=flat-square&labelColor=000000">
+  <img alt="tests" src="https://img.shields.io/badge/tests-360%2B-9a9aa3?style=flat-square&labelColor=000000">
+  <img alt="license: personal use" src="https://img.shields.io/badge/license-personal%20use-5f5f68?style=flat-square&labelColor=000000">
 </p>
 
 <p align="center">
   <b>Web security scanner for the problems nobody is watching</b> — dangling DNS &amp; subdomain takeover, orphaned cloud buckets,
-  SPF includes that expired, source maps &amp; secrets in your JavaScript, end-of-life software, and the <b>attack paths</b>
-  that turn small findings into a real compromise.<br>
+  compromised script CDNs, SPF includes that expired, debug mode left on, secrets in your JavaScript, end-of-life software,
+  and the <b>attack paths</b> that turn small findings into a real compromise.<br>
   Runs as a <b>CLI</b>, a <b>dashboard</b>, an <b>MCP server</b> for AI agents, and a <b>CI step</b>.
 </p>
 
 <p align="center">
+  <a href="#connect-your-ai-assistant-in-30-seconds">MCP in 30 s</a> ·
   <a href="#see-it-work">See it work</a> ·
   <a href="#what-it-finds-that-checklists-miss">What it finds</a> ·
   <a href="#attack-paths">Attack paths</a> ·
   <a href="#install">Install</a> ·
   <a href="#usage">Usage</a> ·
   <a href="#in-ci">CI</a> ·
-  <a href="#mcp-ai-agents">MCP</a> ·
+  <a href="#fsv-and-owasp-zap">FSV &amp; ZAP</a> ·
   <a href="#limits--what-fsv-is-not">Limits</a> ·
   <a href="#documentation">Docs</a>
 </p>
@@ -34,6 +36,38 @@
 > FSV is a security **assessment** tool. Use it **only** against systems you own or are **explicitly authorized in writing** to test. Scanning systems without permission is illegal in most jurisdictions. Every entry point (web, CLI, MCP, CI) requires you to confirm authorization, and a shared deployment can additionally require **proof of control** of the target before any payload is sent ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
 
 ---
+
+## Connect your AI assistant in 30 seconds
+
+Point Claude, Cursor or VS Code at FSV and ask it to review **your** site. The assistant asks you to confirm
+authorization, runs a passive check, then a full scan, leads with attack paths and hands you paste-ready fixes.
+
+```bash
+pip install -e .                 # from a clone of this repository (see Install)
+fsv mcp-config --client claude-code     # prints:  claude mcp add fsv -- /path/to/fsv-mcp
+fsv mcp-config --client claude-desktop  # or cursor · vscode — prints the JSON to paste
+```
+
+Then, in the assistant: *“Use the **security_review** prompt on https://my-shop.example — I own it.”*
+
+<details>
+<summary><b>MCP tools &amp; prompt</b></summary>
+
+| Tool | Purpose |
+|---|---|
+| `fsv_scan` | Full scan — profiles, scope, time-box, `seed_urls`; `headers` / `cookies` for an authenticated scan with a test account |
+| `fsv_quick_check` / `fsv_waf_check` | Passive posture check / WAF-CDN detection |
+| `fsv_fixes` | Paste-ready nginx / apache / caddy / express / DNS remediation |
+| `fsv_get_report` | md · json · html · sarif · csv · `fix-*` |
+| `fsv_triage` | Mark false positive / accepted / fixed (persists per host) |
+| `fsv_compare_scans` · `fsv_target_trend` | Before/after a fix · risk over time |
+| `fsv_verify_ownership` | Proof of control (DNS TXT or HTTP file) for shared deployments |
+| `fsv_list_scans` · `fsv_scan_stats` · `fsv_list_modules` | History · request stats · catalogue |
+
+**Prompt** `security_review(target, server)` — the guided, authorization-first workflow above.
+Scan results carry an `attack_paths` section so the agent leads with what matters. The server is tested
+end to end over stdio (`tests/test_mcp_stdio.py`).
+</details>
 
 ## See it work
 
@@ -98,6 +132,7 @@ Liquid-glass UI with live progress (survives a page reload), the attack-path pan
 
 ## Features
 
+- **Finds the pages first** — besides links: robots.txt, sitemaps, routes leaked by debug pages, and API paths quoted in your JavaScript; action-like paths are never requested. `--seed` for anything else.
 - **Fix packs** — turn findings into **nginx / Apache / Caddy / Express / DNS** configuration (`fsv fixes <scan> nginx`). Only what was actually found; CSP is emitted report-only.
 - **CI-ready** — `fsv.toml`, **baselines** (gate only on *new* findings), `--fail-on`, SARIF for GitHub code scanning, and a ready-made **GitHub Action**.
 - **Triage that sticks** — false positive / accepted risk / fixed / confirmed, stored per host by stable fingerprint, re-applied to later scans, excluded from the score. Diff any two scans; per-host trend.
@@ -105,7 +140,7 @@ Liquid-glass UI with live progress (survives a page reload), the attack-path pan
 - **Honest failure** — a crashing module is counted, explained and logged; a target that never answered is flagged, not graded "clean".
 - **Safe by construction** — secrets masked at the source; cloud-metadata/link-local never reachable, loopback/RFC 1918 optionally blocked, on every lookup and redirect hop; dashboard CSRF/DNS-rebinding guard and token auth.
 - **Extensible** — a module is one class; drop a file in `~/.fsv/plugins` or ship an entry-point package ([docs/WRITING_MODULES.md](docs/WRITING_MODULES.md)). Bring your own JS-library advisories and EOL dates.
-- **Fast & polite** — async engine, shared HTTP client with cache, request coalescing, token-bucket rate limit, retries, size cap, time limit with partial results.
+- **Fast & polite, hard to stall** — async engine, shared HTTP client with cache, request coalescing, token-bucket rate limit, retries, size cap, time limit with partial results. A hanging endpoint costs one timeout per scan, not one per module; every response regex is linear-time. Tested against hostile local servers (redirect loops, 20 MB bodies, hangs, catch-all SPAs).
 - **Five report formats** — Markdown (OWASP-grouped), JSON, self-contained HTML, SARIF 2.1, CSV.
 - **Local-first** — results in a local SQLite file; the only optional third-party calls are listed in [DEPLOYMENT.md](docs/DEPLOYMENT.md#network-egress).
 
@@ -187,32 +222,26 @@ fsv scan staging.example.com --authorize                                        
 ```
 SARIF is uploaded to GitHub code scanning; the HTML report and log are attached as an artifact.
 
-### MCP (AI agents)
+## FSV and OWASP ZAP
 
-```json
-{ "mcpServers": { "fsv": { "command": "fsv-mcp" } } }
-```
-> *"I own example.com. Use FSV to scan it, tell me the attack paths first, then give me the nginx fixes."*
+ZAP is the right tool for deep testing of an application's inputs — use it. FSV looks at what surrounds the
+application, where typical DAST scans don't go, and the two work well side by side:
 
-<details>
-<summary><b>MCP tools</b></summary>
+| Area | Typical DAST scan | FSV |
+|---|---|---|
+| DNS that outlived its project (dangling CNAME, unregistered targets) | out of scope | `takeover` |
+| Buckets your pages load from that no longer exist | out of scope | `cloud_storage` |
+| Scripts from compromised CDNs (polyfill.io 2024) or expired domains | out of scope | `supply_chain` |
+| Email spoofing: SPF lookup limit, dead includes, DMARC, DKIM key size | out of scope | `dns_security` |
+| Debug mode visible only on error pages (Django, Werkzeug, Ignition…) | partly | `supply_chain` | scripts/styles from compromised or abandoned CDNs (polyfill.io, bootcdn, staticfile, rawgit) or from domains that are no longer registered | passive · url · ↗ |
+| `debug_mode` |
+| Several medium findings that add up to account takeover | listed separately | `correlation` attack paths |
+| Fixes as server config, triage that persists, CI baselines, MCP | — | built in |
+| Deep input fuzzing, authenticated spidering, scripted auth, JS-rendered apps | **yes** | basic |
 
-| Tool | Purpose |
-|---|---|
-| `fsv_scan` | Full scan (profiles, scope, time-box; CT logs and external checks opt-in) |
-| `fsv_quick_check` / `fsv_waf_check` | Passive posture check / WAF-CDN detection |
-| `fsv_get_report` | md · json · html · sarif · csv · `fix-*` |
-| `fsv_fixes` | Paste-ready nginx / apache / caddy / express / DNS remediation |
-| `fsv_triage` | Mark false positive / accepted / fixed (persists per host) |
-| `fsv_compare_scans` · `fsv_target_trend` | Before/after a fix · risk over time |
-| `fsv_list_scans` · `fsv_scan_stats` · `fsv_list_modules` | History · request stats · catalogue |
+## Modules (32)
 
-Scan results carry an `attack_paths` section so the agent can lead with what matters.
-</details>
-
-## Modules (31)
-
-FSV ships **31 modules** — 25 passive, 6 active. Run `fsv modules` for the live list.
+FSV ships **32 modules** — 26 passive, 6 active. Run `fsv modules` for the live list.
 
 <details>
 <summary><b>The full catalogue</b> &nbsp;<sub>(or run <code>fsv modules</code>)</sub></summary>
@@ -224,6 +253,7 @@ FSV ships **31 modules** — 25 passive, 6 active. Run `fsv modules` for the liv
 | `dns_security` | SPF (10-lookup limit, dead includes, `+all`), DMARC, DKIM key strength, MTA-STS, dead NS/MX, CAA, DNSSEC | passive · site |
 | `js_analysis` | hard-coded credentials, exposed source maps, internal/non-prod hosts in client code | passive · url |
 | `js_libs` | known-vulnerable & end-of-life JavaScript libraries | passive · url |
+| `supply_chain` | scripts/styles from compromised or abandoned CDNs (polyfill.io, bootcdn, staticfile, rawgit) or from domains that are no longer registered | passive · url · ↗ |
 | `debug_mode` | framework debug mode in production (Django `DEBUG=True`, Werkzeug console, Rails, Laravel Ignition, Symfony, Express, ASP.NET) — seen on error pages a crawler never visits | passive · site |
 | `paths` | ~100 exposed files/endpoints, each content-validated (`.git`, `.env`, actuator, pprof, tfstate, backups…) | passive · site |
 | `tech` | stack fingerprint + **end-of-life** software from a dated table | passive · site |
@@ -240,7 +270,7 @@ FSV ships **31 modules** — 25 passive, 6 active. Run `fsv modules` for the liv
 ## How it works
 
 <p align="center">
-  <img src="docs/assets/pipeline.svg" alt="Pipeline: crawl, 31 modules, aggregate by fingerprint, correlate into attack paths, triage per host, report — shared by CLI, dashboard, MCP agents and the GitHub Action." width="100%">
+  <img src="docs/assets/pipeline.svg" alt="Pipeline: crawl, 32 modules, aggregate by fingerprint, correlate into attack paths, triage per host, report — shared by CLI, dashboard, MCP agents and the GitHub Action." width="100%">
 </p>
 
 One engine, four front doors. Address policy and proof of control live in the engine, so every front door gets them; request guard and token auth belong to the web server. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

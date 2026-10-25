@@ -20,11 +20,22 @@ from html import escape as esc
 HERE = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.join(HERE, "..", "docs", "assets")
 
-C = dict(bg="#07070b", panel="#12121a", line="#2a2a36", text="#f5f5f7", mut="#9b9ba6", faint="#5c5c68",
-         crit="#ff5468", high="#ff9a42", med="#f2d44b", low="#63a8ff", ok="#30c48d", info="#9aa0ad")
+# Monochrome, metallic: graphite glass, chrome type. Severity is a luminance ladder (brightest = worst),
+# always paired with its label, so nothing depends on telling hues apart.
+C = dict(bg="#0a0a0c", panel="#141417", line="#2a2a30", text="#f4f4f6", mut="#a3a3ad", faint="#62626c",
+         crit="#ffffff", high="#dcdce2", med="#b4b4bd", low="#8c8c96", ok="#e9e9ee", info="#6e6e78",
+         accent="#c7c7cf")
 SEV = {"critical": C["crit"], "high": C["high"], "medium": C["med"], "low": C["low"], "info": C["info"]}
 SANS = '-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif'
 MONO = 'ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace'
+
+# Shared by every file: brushed-graphite background, chrome text/edge gradients, glass highlight.
+METAL_DEFS = """
+<radialGradient id="bgm" cx="30%" cy="-20%" r="140%"><stop offset="0" stop-color="#1d1d22"/><stop offset=".55" stop-color="#0e0e11"/><stop offset="1" stop-color="#060607"/></radialGradient>
+<linearGradient id="chrome" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".48" stop-color="#d6d6dc"/><stop offset=".52" stop-color="#9c9ca6"/><stop offset="1" stop-color="#ececf0"/></linearGradient>
+<linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".42"/><stop offset=".25" stop-color="#ffffff" stop-opacity=".12"/><stop offset="1" stop-color="#ffffff" stop-opacity=".05"/></linearGradient>
+<linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".085"/><stop offset=".5" stop-color="#ffffff" stop-opacity=".035"/><stop offset="1" stop-color="#ffffff" stop-opacity=".02"/></linearGradient>
+<pattern id="brush" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="4" height="1" fill="#fff" fill-opacity=".012"/></pattern>"""
 
 BASE_CSS = f"""
 text{{font-family:{SANS};fill:{C['text']}}}
@@ -39,7 +50,7 @@ def svg(w: int, h: int, title: str, desc: str, defs: str, body: str, css: str = 
     return (f'<?xml version="1.0" encoding="UTF-8"?>\n'
             f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="{w}" height="{h}" '
             f'role="img" aria-labelledby="t d">\n<title id="t">{esc(title)}</title>\n<desc id="d">{esc(desc)}</desc>\n'
-            f'<defs>{defs}</defs>\n<style>{BASE_CSS}{css}</style>\n{body}\n</svg>\n')
+            f'<defs>{METAL_DEFS}{defs}</defs>\n<style>{BASE_CSS}{css}</style>\n{body}\n</svg>\n')
 
 
 class Loop:
@@ -117,50 +128,52 @@ def hero() -> str:
     rays = "".join(f'<line x1="{cx}" y1="{cy}" x2="{cx + R*math.sin(math.radians(a)):.1f}" y2="{cy - R*math.cos(math.radians(a)):.1f}" stroke="#fff" stroke-opacity=".05"/>' for a in range(0, 360, 45))
     sx, sy = cx - R * math.sin(math.radians(60)), cy - R * math.cos(math.radians(60))
     defs = f"""
-<radialGradient id="bg" cx="50%" cy="-15%" r="130%"><stop offset="0" stop-color="#171722"/><stop offset="1" stop-color="{C['bg']}"/></radialGradient>
-<radialGradient id="o1"><stop offset="0" stop-color="#7c86c8" stop-opacity=".55"/><stop offset="1" stop-color="#7c86c8" stop-opacity="0"/></radialGradient>
-<radialGradient id="o2"><stop offset="0" stop-color="#ff5468" stop-opacity=".32"/><stop offset="1" stop-color="#ff5468" stop-opacity="0"/></radialGradient>
-<radialGradient id="o3"><stop offset="0" stop-color="#30c48d" stop-opacity=".26"/><stop offset="1" stop-color="#30c48d" stop-opacity="0"/></radialGradient>
+<radialGradient id="o1"><stop offset="0" stop-color="#e6e6ee" stop-opacity=".22"/><stop offset="1" stop-color="#e6e6ee" stop-opacity="0"/></radialGradient>
+<radialGradient id="o2"><stop offset="0" stop-color="#b9b9c4" stop-opacity=".16"/><stop offset="1" stop-color="#b9b9c4" stop-opacity="0"/></radialGradient>
+<radialGradient id="o3"><stop offset="0" stop-color="#ffffff" stop-opacity=".10"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
 <pattern id="dots" width="26" height="26" patternUnits="userSpaceOnUse"><circle cx="1.5" cy="1.5" r="1" fill="#fff" fill-opacity=".07"/></pattern>
 <linearGradient id="hl" gradientUnits="userSpaceOnUse" x1="64" y1="0" x2="640" y2="0">
-  <stop offset="0" stop-color="#ff9a42"/><stop offset=".5" stop-color="#ff5468"/><stop offset="1" stop-color="#ff9a42"/>
+  <stop offset="0" stop-color="#8e8e98"/><stop offset=".45" stop-color="#ffffff"/><stop offset=".55" stop-color="#ffffff"/><stop offset="1" stop-color="#8e8e98"/>
   <animateTransform attributeName="gradientTransform" type="translate" from="-300 0" to="300 0" dur="6s" repeatCount="indefinite"/>
 </linearGradient>
 <linearGradient id="sw" gradientUnits="userSpaceOnUse" x1="{cx}" y1="{cy-R}" x2="{sx:.1f}" y2="{sy:.1f}">
-  <stop offset="0" stop-color="#7cf0c0" stop-opacity=".55"/><stop offset="1" stop-color="#7cf0c0" stop-opacity="0"/></linearGradient>
+  <stop offset="0" stop-color="#ffffff" stop-opacity=".55"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
 <filter id="blur" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="30"/></filter>
 <clipPath id="disc"><circle cx="{cx}" cy="{cy}" r="{R}"/></clipPath>"""
     body = f"""
-<rect width="{W}" height="{H}" fill="url(#bg)"/>
+<rect width="{W}" height="{H}" fill="url(#bgm)"/>
+<rect width="{W}" height="{H}" fill="url(#brush)"/>
 <rect width="{W}" height="{H}" fill="url(#dots)"/>
 <g filter="url(#blur)">
   <circle cx="190" cy="40" r="190" fill="url(#o1)" style="animation:drift1 14s ease-in-out infinite alternate"/>
   <circle cx="1100" cy="340" r="200" fill="url(#o2)" style="animation:drift2 17s ease-in-out infinite alternate"/>
   <circle cx="640" cy="400" r="170" fill="url(#o3)" style="animation:drift1 19s ease-in-out infinite alternate"/>
 </g>
-<rect x="0.5" y="0.5" width="{W-1}" height="{H-1}" rx="22" fill="none" stroke="#fff" stroke-opacity=".10"/>
+<rect x="0.5" y="0.5" width="{W-1}" height="{H-1}" rx="22" fill="none" stroke="url(#rim)"/>
 
-<rect x="64" y="58" width="68" height="68" rx="18" fill="#fff" fill-opacity=".06" stroke="#fff" stroke-opacity=".18"/>
-<text x="98" y="101" text-anchor="middle" font-size="22" class="b" letter-spacing="1">FSV</text>
+<rect x="64" y="58" width="68" height="68" rx="18" fill="url(#glass)" stroke="url(#rim)"/>
+<path d="M82 58.8 H114" stroke="#fff" stroke-opacity=".5"/>
+<text x="98" y="101" text-anchor="middle" font-size="22" class="b" letter-spacing="1" style="fill:url(#chrome)">FSV</text>
 <text x="150" y="84" font-size="13" class="mut" letter-spacing="3">WEB SECURITY SCANNER  ·  MCP TOOLKIT</text>
-<text x="150" y="108" font-size="13" class="m mut">v2.0 · detection-only · local-first</text>
+<text x="150" y="108" font-size="13" class="m mut">v2.1 · detection-only · local-first</text>
 
-<text x="62" y="212" font-size="58" class="b" letter-spacing="-1.5">Finds what</text>
+<text x="62" y="212" font-size="58" class="b" letter-spacing="-1.5" style="fill:url(#chrome)">Finds what</text>
 <text x="62" y="276" font-size="58" class="b" letter-spacing="-1.5" style="fill:url(#hl)">checklists miss.</text>
 <text x="64" y="324" font-size="16" class="m mut">dangling DNS · orphaned buckets · dead SPF includes · source maps · attack paths</text>
 
 <g>
-  <circle cx="{cx}" cy="{cy}" r="{R}" fill="#0b0b12" fill-opacity=".7"/>
+  <circle cx="{cx}" cy="{cy}" r="{R}" fill="url(#glass)"/>
+  <circle cx="{cx}" cy="{cy}" r="{R}" fill="#060607" fill-opacity=".55"/>
   {rings}{rays}
   <g clip-path="url(#disc)">
     <g style="transform-origin:{cx}px {cy}px;animation:spin {T}s linear infinite">
       <path d="M{cx} {cy} L{cx} {cy-R} A{R} {R} 0 0 0 {sx:.1f} {sy:.1f} Z" fill="url(#sw)"/>
-      <line x1="{cx}" y1="{cy}" x2="{cx}" y2="{cy-R}" stroke="#7cf0c0" stroke-width="2" stroke-opacity=".9"/>
+      <line x1="{cx}" y1="{cy}" x2="{cx}" y2="{cy-R}" stroke="#ffffff" stroke-width="2" stroke-opacity=".9"/>
     </g>
   </g>
-  <circle cx="{cx}" cy="{cy}" r="{R}" fill="none" stroke="#fff" stroke-opacity=".22"/>
-  <circle cx="{cx}" cy="{cy}" r="4" fill="none" stroke="#7cf0c0" stroke-width="1.5" vector-effect="non-scaling-stroke" style="transform-box:fill-box;transform-origin:center;animation:ping 3s ease-out infinite"/>
-  <circle cx="{cx}" cy="{cy}" r="4" fill="#7cf0c0"/>
+  <circle cx="{cx}" cy="{cy}" r="{R}" fill="none" stroke="url(#rim)" stroke-width="1.5"/>
+  <circle cx="{cx}" cy="{cy}" r="4" fill="none" stroke="#ffffff" stroke-width="1.5" vector-effect="non-scaling-stroke" style="transform-box:fill-box;transform-origin:center;animation:ping 3s ease-out infinite"/>
+  <circle cx="{cx}" cy="{cy}" r="4" fill="#ffffff"/>
   {''.join(blip_svg)}
 </g>
 <text x="{cx}" y="{cy+R+34}" text-anchor="middle" font-size="12" class="m mut">never claims a resource · never tests a credential</text>"""
@@ -209,8 +222,8 @@ def terminal(scan: dict) -> str:
         rows.append(f'<g style="{L.appear(at, .3, rise=5)}">{markup.replace("{Y}", str(y))}</g>')
         y += dy
 
-    line(f'<text x="{X0}" y="{{Y}}" class="m" font-size="14" style="fill:{C["mut"]}">▶ Scanning <tspan style="fill:#63a8ff">{esc(scan["target"])}</tspan>  (balanced)</text>', t); t += .55
-    line(f'<text x="{X0}" y="{{Y}}" class="m" font-size="14" style="fill:{C["mut"]}">{scan["urls_scanned"]} URLs · 31 modules · {scan["requests"]} requests · {scan["duration_s"]}s</text>', t); t += .7
+    line(f'<text x="{X0}" y="{{Y}}" class="m" font-size="14" style="fill:{C["mut"]}">▶ Scanning <tspan style="fill:{C["text"]};text-decoration:underline">{esc(scan["target"])}</tspan>  (balanced)</text>', t); t += .55
+    line(f'<text x="{X0}" y="{{Y}}" class="m" font-size="14" style="fill:{C["mut"]}">{scan["urls_scanned"]} URLs · 32 modules · {scan["requests"]} requests · {scan["duration_s"]}s</text>', t); t += .7
     line(f'<text x="{X0}" y="{{Y}}" class="m" font-size="14"><tspan style="fill:{C["crit"]};font-weight:700">Risk {esc(scan["grade"])} ({scan["risk_score"]}/100)</tspan>'
          f'<tspan style="fill:{C["crit"]}">   {c["critical"]} critical</tspan><tspan style="fill:{C["high"]}">  {c["high"]} high</tspan>'
          f'<tspan style="fill:{C["med"]}">  {c["medium"]} medium</tspan><tspan style="fill:{C["low"]}">  {c["low"]} low</tspan>'
@@ -233,12 +246,12 @@ def terminal(scan: dict) -> str:
     for txt in ('add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;',
                 'add_header X-Content-Type-Options "nosniff" always;',
                 'server_tokens off;'):
-        line(f'<text x="{X0}" y="{{Y}}" class="m" font-size="13.5" style="fill:#9ad1ff">{esc(txt)}</text>', t, dy=LH - 4); t += .5
+        line(f'<text x="{X0}" y="{{Y}}" class="m" font-size="13.5" style="fill:{C["accent"]}">{esc(txt)}</text>', t, dy=LH - 4); t += .5
 
     H = y + 30
-    bar = (f'<rect x="0.5" y="0.5" width="{W-1}" height="{H-1}" rx="16" fill="#0c0c12" stroke="#fff" stroke-opacity=".13"/>'
+    bar = (f'<rect x="0" y="0" width="{W}" height="{H}" rx="16" fill="url(#bgm)"/><rect x="0.5" y="0.5" width="{W-1}" height="{H-1}" rx="16" fill="none" stroke="url(#rim)"/>'
            f'<path d="M0.5 16.5 A16 16 0 0 1 16.5 0.5 H{W-16.5} A16 16 0 0 1 {W-.5} 16.5 V46 H0.5 Z" fill="#fff" fill-opacity=".05"/>'
-           f'<circle cx="26" cy="23" r="6.5" fill="#ff5f57"/><circle cx="48" cy="23" r="6.5" fill="#febc2e"/><circle cx="70" cy="23" r="6.5" fill="#28c840"/>'
+           f'<circle cx="26" cy="23" r="6" fill="url(#chrome)" fill-opacity=".85"/><circle cx="46" cy="23" r="6" fill="#fff" fill-opacity=".28"/><circle cx="66" cy="23" r="6" fill="#fff" fill-opacity=".14"/>'
            f'<text x="{W/2}" y="28" text-anchor="middle" font-size="13" class="m faint">fsv — demo site scan (real output)</text>')
     blink = L.custom([(0, "opacity:0"), (t, "opacity:0"), (t+.01, "opacity:1"), (t+.6, "opacity:0"), (t+1.2, "opacity:1"), (t+1.8, "opacity:0"),
                       (t+2.4, "opacity:1"), (t+3.0, "opacity:0"), (T, "opacity:0")])
@@ -323,7 +336,7 @@ def attack_path() -> str:
     hdr = (f'<text x="30" y="46" font-size="24" class="b">Two “medium” findings. One critical story.</text>'
            f'<text x="30" y="72" font-size="14" class="mut">FSV reads its own findings and names the chains that are worse together — and the cheapest link to cut.</text>')
     foot = (f'<text x="30" y="{H-24}" font-size="14" class="m faint">Break the chain: mark the cookie HttpOnly (one line) — then fix the XSS and add a CSP.</text>')
-    body = (f'<rect width="{W}" height="{H}" rx="22" fill="{C["bg"]}"/><rect x=".5" y=".5" width="{W-1}" height="{H-1}" rx="22" fill="none" stroke="#fff" stroke-opacity=".12"/>'
+    body = (f'<rect width="{W}" height="{H}" rx="22" fill="url(#bgm)"/><rect width="{W}" height="{H}" rx="22" fill="url(#brush)"/><rect x=".5" y=".5" width="{W-1}" height="{H-1}" rx="22" fill="none" stroke="url(#rim)"/>'
             + hdr + "".join(links) + "".join(nodes_svg) + packet + fix + foot)
     return svg(W, H, "Attack path: XSS → session cookie → account takeover",
                "An animated chain: reflected XSS reads a session cookie that lacks HttpOnly, leading to account takeover; adding HttpOnly breaks the chain.",
@@ -336,7 +349,7 @@ def attack_path() -> str:
 
 def pipeline() -> str:
     W, H, T = 1000, 270, 7.2
-    stages = [("Crawl", "same-origin", "cached · polite"), ("31 modules", "site + per-URL", "passive / active"),
+    stages = [("Crawl", "same-origin", "cached · polite"), ("32 modules", "site + per-URL", "passive / active"),
               ("Aggregate", "by fingerprint", "many → 1 issue"), ("Correlate", "attack paths", "links → story"),
               ("Triage", "per host", "FP · accepted"), ("Report", "5 formats", "+ fix packs")]
     n, bw, gap, x0, y0, bh = len(stages), 128, 34, 34, 96, 104
@@ -347,24 +360,24 @@ def pipeline() -> str:
         glow = f"animation:lit{i} {T}s linear infinite"
         t0 = i * (T - 1.2) / n
         css.append(f"@keyframes lit{i}{{0%,{t0/T*100:.2f}%{{stroke-opacity:.14;fill-opacity:.05}}{(t0+.4)/T*100:.2f}%{{stroke-opacity:1;fill-opacity:.14}}{(t0+1.5)/T*100:.2f}%,100%{{stroke-opacity:.14;fill-opacity:.05}}}}")
-        parts.append(f'<rect x="{x}" y="{y0}" width="{bw}" height="{bh}" rx="16" fill="#fff" fill-opacity=".05" stroke="#7cf0c0" stroke-opacity=".14" stroke-width="1.6" style="{glow}"/>'
+        parts.append(f'<rect x="{x}" y="{y0}" width="{bw}" height="{bh}" rx="16" fill="#fff" fill-opacity=".05" stroke="#ffffff" stroke-opacity=".14" stroke-width="1.6" style="{glow}"/>'
                      f'<text x="{x+bw/2}" y="{y0+38}" text-anchor="middle" font-size="18" class="b">{esc(name)}</text>'
                      f'<text x="{x+bw/2}" y="{y0+64}" text-anchor="middle" font-size="12.5" class="m mut">{esc(l1)}</text>'
                      f'<text x="{x+bw/2}" y="{y0+84}" text-anchor="middle" font-size="12" class="m mut">{esc(l2)}</text>'
                      f'<text x="{x+14}" y="{y0-12}" font-size="13" class="m faint">{i+1}</text>')
         if i < n - 1:
             xa = x + bw + 5
-            parts.append(f'<line x1="{xa}" y1="{y0+bh/2}" x2="{xa+gap-14}" y2="{y0+bh/2}" stroke="#7cf0c0" stroke-opacity=".7" stroke-width="2.4" stroke-dasharray="6 6" stroke-linecap="round" style="animation:flow .7s linear infinite"/>'
-                         f'<path d="M{xa+gap-20} {y0+bh/2-6} l8 6 l-8 6" stroke="#7cf0c0" stroke-opacity=".8" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>')
+            parts.append(f'<line x1="{xa}" y1="{y0+bh/2}" x2="{xa+gap-14}" y2="{y0+bh/2}" stroke="#ffffff" stroke-opacity=".7" stroke-width="2.4" stroke-dasharray="6 6" stroke-linecap="round" style="animation:flow .7s linear infinite"/>'
+                         f'<path d="M{xa+gap-20} {y0+bh/2-6} l8 6 l-8 6" stroke="#ffffff" stroke-opacity=".8" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>')
     ends = ["CLI", "Dashboard", "MCP agents", "GitHub Action"]
     pills = "".join(f'<rect x="{34 + k*150}" y="{H-62}" width="136" height="32" rx="16" fill="#fff" fill-opacity=".05" stroke="#fff" stroke-opacity=".16"/>'
                     f'<text x="{34 + k*150 + 68}" y="{H-41}" text-anchor="middle" font-size="14" class="m">{esc(e)}</text>' for k, e in enumerate(ends))
-    body = (f'<rect width="{W}" height="{H}" rx="22" fill="{C["bg"]}"/><rect x=".5" y=".5" width="{W-1}" height="{H-1}" rx="22" fill="none" stroke="#fff" stroke-opacity=".12"/>'
+    body = (f'<rect width="{W}" height="{H}" rx="22" fill="url(#bgm)"/><rect width="{W}" height="{H}" rx="22" fill="url(#brush)"/><rect x=".5" y=".5" width="{W-1}" height="{H-1}" rx="22" fill="none" stroke="url(#rim)"/>'
             f'<text x="34" y="46" font-size="22" class="b">One engine, four front doors</text>'
             f'<text x="34" y="70" font-size="14" class="mut">Address policy and proof of control live in the engine, so every front door gets them.</text>'
             + "".join(parts) + pills
             + f'<text x="{34 + 4*150 + 10}" y="{H-41}" font-size="13" class="m faint">← all share the same pipeline</text>')
-    return svg(W, H, "FSV pipeline", "Crawl, 31 modules, aggregate, correlate, triage, report — shared by CLI, dashboard, MCP and the GitHub Action.",
+    return svg(W, H, "FSV pipeline", "Crawl, 32 modules, aggregate, correlate, triage, report — shared by CLI, dashboard, MCP and the GitHub Action.",
                "", body, "".join(css))
 
 
@@ -373,7 +386,7 @@ def pipeline() -> str:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def detections() -> str:
-    W, T = 1080, 12.0
+    W, T = 1080, 14.0
     cards = [
         ("Dangling DNS", "high", "HIGH", "blog.example.com → old-app.github.io", "✗ NXDOMAIN — anyone can claim the name", "chain"),
         ("Orphaned bucket", "critical", "CRITICAL", '<script src="//assets.s3…/app.js">', "NoSuchBucket → create it, own the page", "bucket"),
@@ -381,31 +394,36 @@ def detections() -> str:
         ("Source map & secrets", "critical", "CRITICAL", "app.js.map  (sourcesContent embedded)", "key sk_l…************l2  (masked)", "map"),
         ("End-of-life software", "medium", "MEDIUM", "PHP/8.1.2 · jQuery 3.3.1 · Vue 2.6", "PHP 8.1 security support ended 2025-12-31", "clock"),
         ("Attack path", "critical", "CRITICAL", "XSS  +  session cookie without HttpOnly", "= account takeover with one click", "link"),
+        ("Compromised CDN", "critical", "CRITICAL", '<script src="cdn.polyfill.io/v3/…">', "domain changed hands → served malware", "chip"),
+        ("Debug mode in prod", "high", "HIGH", "GET /random-404 → Django DEBUG = True", "33 URL patterns + settings leak", "bug"),
     ]
     cw, ch, gx, gy, x0, y0 = 510, 140, 20, 20, 20, 20
-    H = y0 * 2 + 3 * ch + 2 * gy
+    rows = (len(cards) + 1) // 2
+    H = y0 * 2 + rows * ch + (rows - 1) * gy
     css = []
     L = Loop(T, "dc")
-    parts, defs = [], ['<linearGradient id="beam" x1="0" x2="1"><stop offset="0" stop-color="#7cf0c0" stop-opacity="0"/><stop offset=".5" stop-color="#7cf0c0" stop-opacity=".35"/><stop offset="1" stop-color="#7cf0c0" stop-opacity="0"/></linearGradient>']
+    parts, defs = [], ['<linearGradient id="beam" x1="0" x2="1"><stop offset="0" stop-color="#ffffff" stop-opacity="0"/><stop offset=".5" stop-color="#ffffff" stop-opacity=".35"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>']
     icons = {
         "chain": lambda x, y, c: f'<path d="M{x-9} {y+4} a7 7 0 0 1 0 -10 l5 -5 a7 7 0 0 1 10 0 M{x+9} {y-4} a7 7 0 0 1 0 10 l-5 5 a7 7 0 0 1 -10 0" stroke="{c}" stroke-width="2.6" fill="none" stroke-linecap="round"/>',
         "bucket": lambda x, y, c: f'<path d="M{x-11} {y-8} h22 l-3 18 h-16 z" stroke="{c}" stroke-width="2.6" fill="none" stroke-linejoin="round"/><ellipse cx="{x}" cy="{y-8}" rx="11" ry="3.5" stroke="{c}" stroke-width="2.6" fill="none"/>',
         "mail": lambda x, y, c: f'<rect x="{x-12}" y="{y-8}" width="24" height="16" rx="3" stroke="{c}" stroke-width="2.6" fill="none"/><path d="M{x-12} {y-7} l12 9 l12 -9" stroke="{c}" stroke-width="2.6" fill="none" stroke-linejoin="round"/>',
         "map": lambda x, y, c: f'<path d="M{x-11} {y-9} l7 3 l8 -3 l7 3 v15 l-7 -3 l-8 3 l-7 -3 z M{x-4} {y-6} v15 M{x+4} {y-9} v15" stroke="{c}" stroke-width="2.4" fill="none" stroke-linejoin="round"/>',
         "clock": lambda x, y, c: f'<circle cx="{x}" cy="{y}" r="11" stroke="{c}" stroke-width="2.6" fill="none"/><path d="M{x} {y-6} v6 l5 3" stroke="{c}" stroke-width="2.6" fill="none" stroke-linecap="round"/>',
+        "chip": lambda x, y, c: f'<rect x="{x-9}" y="{y-9}" width="18" height="18" rx="3" stroke="{c}" stroke-width="2.6" fill="none"/><path d="M{x-4} {y-13} v4 M{x+4} {y-13} v4 M{x-4} {y+9} v4 M{x+4} {y+9} v4 M{x-13} {y-4} h4 M{x-13} {y+4} h4 M{x+9} {y-4} h4 M{x+9} {y+4} h4" stroke="{c}" stroke-width="2.2"/>',
+        "bug": lambda x, y, c: f'<ellipse cx="{x}" cy="{y+2}" rx="7" ry="10" stroke="{c}" stroke-width="2.6" fill="none"/><path d="M{x-7} {y} h-6 M{x+7} {y} h6 M{x-6} {y+7} l-5 4 M{x+6} {y+7} l5 4 M{x-5} {y-6} l-4 -5 M{x+5} {y-6} l4 -5" stroke="{c}" stroke-width="2.2" stroke-linecap="round"/>',
         "link": lambda x, y, c: f'<circle cx="{x-9}" cy="{y}" r="5" stroke="{c}" stroke-width="2.6" fill="none"/><circle cx="{x+9}" cy="{y}" r="5" stroke="{c}" stroke-width="2.6" fill="none"/><path d="M{x-4} {y} h8" stroke="{c}" stroke-width="2.6"/>',
     }
     for i, (title, sev, label, l1, l2, icon) in enumerate(cards):
         col, r, cc = SEV[sev], i // 2, i % 2
         x, y = x0 + cc * (cw + gx), y0 + r * (ch + gy)
-        t0 = 0.4 + i * 1.5
+        t0 = 0.3 + i * (T - 1.6) / len(cards)
         badge_w = len(label) * 9 + 26
         beam = L.custom([(0, "opacity:0;transform:translateX(-120px)"), (t0, "opacity:0;transform:translateX(-120px)"),
                          (t0 + .05, "opacity:1;transform:translateX(-120px)"), (t0 + 1.1, f"opacity:1;transform:translateX({cw}px)"),
                          (t0 + 1.15, f"opacity:0;transform:translateX({cw}px)"), (T, f"opacity:0;transform:translateX({cw}px)")], "ease-in-out")
         parts.append(
             f'<g transform="translate({x},{y})">'
-            f'<rect width="{cw}" height="{ch}" rx="18" fill="#fff" fill-opacity=".045" stroke="#fff" stroke-opacity=".13"/>'
+            f'<rect width="{cw}" height="{ch}" rx="18" fill="url(#glass)" stroke="url(#rim)"/><path d="M18 .8 H{cw-18}" stroke="#fff" stroke-opacity=".35"/>'
             f'<clipPath id="cl{i}"><rect width="{cw}" height="{ch}" rx="18"/></clipPath>'
             f'<g clip-path="url(#cl{i})"><rect y="0" width="120" height="{ch}" fill="url(#beam)" style="{beam}"/></g>'
             f'<circle cx="46" cy="44" r="24" fill="{col}" fill-opacity=".13" stroke="{col}" stroke-opacity=".5"/>{icons[icon](46, 44, col)}'
@@ -416,9 +434,9 @@ def detections() -> str:
             f'<rect x="{cw-badge_w-22}" y="22" width="{badge_w}" height="26" rx="13" fill="{col}" fill-opacity=".16" stroke="{col}"/>'
             f'<text x="{cw-badge_w/2-22}" y="40" text-anchor="middle" font-size="12.5" class="b" letter-spacing="1" style="fill:{col}">{label}</text></g>'
             f'</g>')
-    body = f'<rect width="{W}" height="{H}" rx="22" fill="{C["bg"]}"/><rect x=".5" y=".5" width="{W-1}" height="{H-1}" rx="22" fill="none" stroke="#fff" stroke-opacity=".12"/>' + "".join(parts)
+    body = f'<rect width="{W}" height="{H}" rx="22" fill="url(#bgm)"/><rect width="{W}" height="{H}" rx="22" fill="url(#brush)"/><rect x=".5" y=".5" width="{W-1}" height="{H-1}" rx="22" fill="none" stroke="url(#rim)"/>' + "".join(parts)
     return svg(W, H, "What FSV finds that checklists miss",
-               "Six detection cards: dangling DNS, orphaned bucket, dead SPF include, source map and secrets, end-of-life software, attack path.",
+               "Eight detection cards: dangling DNS, orphaned bucket, dead SPF include, source map and secrets, end-of-life software, attack path, compromised CDN, debug mode in production.",
                "".join(defs), body, "".join(css) + L.style())
 
 

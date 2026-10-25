@@ -224,7 +224,10 @@ async def run_scan(
                     await asyncio.gather(*(_run_site(m) for m in site_modules))
 
                 # 4) PER-URL MODULES — bounded concurrency across URL×module pairs
-                jobs = [(u, m) for u in urls for m in per_url_modules]
+                live = [u for u in urls if not http.known_dead(u)]
+                if len(live) < len(urls):
+                    result.stats["unresponsive_urls"] = [u for u in urls if u not in live][:20]
+                jobs = [(u, m) for u in live for m in per_url_modules]
                 total_work, done = len(jobs), 0
                 sem = asyncio.Semaphore(max(2, threads))
 
@@ -309,7 +312,7 @@ def _finalize(result: ScanResult, http: HTTPClient | None, started_at: str) -> N
     merged = aggregate_findings(result.findings)
     result.findings = sort_findings(merged + correlate(merged))
     if http is not None:
-        keep = {k: result.stats[k] for k in ("discovered",) if k in result.stats}
+        keep = {k: result.stats[k] for k in ("discovered", "unresponsive_urls") if k in result.stats}
         result.stats = {**http.stats.as_dict(), **keep}
     if result.module_error_samples:
         result.stats["module_error_samples"] = dict(result.module_error_samples)

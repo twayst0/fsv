@@ -171,7 +171,9 @@ class HTTPClient:
         self._inflight[url] = fut
         try:
             resp = await self._do_request(url, "GET", None, None, None, True)
-            if resp.ok:
+            # A URL that timed out will time out again for the next module: remember the failure
+            # too, so one hanging endpoint costs one timeout per scan instead of one per module.
+            if resp.ok or "Timeout" in resp.error:
                 self._cache[url] = resp
             fut.set_result(resp)
             return resp
@@ -181,6 +183,11 @@ class HTTPClient:
             raise
         finally:
             self._inflight.pop(url, None)
+
+    def known_dead(self, url: str) -> bool:
+        """This scan already saw `url` time out (plain GET) — per-URL checks on it would only wait again."""
+        hit = self._cache.get(url)
+        return hit is not None and not hit.ok
 
     async def redirect_chain(self, url: str) -> list[tuple[int, str]]:
         """Follow redirects manually, returning (status, location) pairs."""

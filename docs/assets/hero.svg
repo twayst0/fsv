@@ -3,58 +3,65 @@
 <title id="t">FSV — finds what checklists miss</title>
 <desc id="d">Animated radar sweep that lights up findings: dangling CNAME, orphaned bucket, SPF include that no longer exists, XSS leading to session theft, exposed source map.</desc>
 <defs>
-<radialGradient id="bg" cx="50%" cy="-15%" r="130%"><stop offset="0" stop-color="#171722"/><stop offset="1" stop-color="#07070b"/></radialGradient>
-<radialGradient id="o1"><stop offset="0" stop-color="#7c86c8" stop-opacity=".55"/><stop offset="1" stop-color="#7c86c8" stop-opacity="0"/></radialGradient>
-<radialGradient id="o2"><stop offset="0" stop-color="#ff5468" stop-opacity=".32"/><stop offset="1" stop-color="#ff5468" stop-opacity="0"/></radialGradient>
-<radialGradient id="o3"><stop offset="0" stop-color="#30c48d" stop-opacity=".26"/><stop offset="1" stop-color="#30c48d" stop-opacity="0"/></radialGradient>
+<radialGradient id="bgm" cx="30%" cy="-20%" r="140%"><stop offset="0" stop-color="#1d1d22"/><stop offset=".55" stop-color="#0e0e11"/><stop offset="1" stop-color="#060607"/></radialGradient>
+<linearGradient id="chrome" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".48" stop-color="#d6d6dc"/><stop offset=".52" stop-color="#9c9ca6"/><stop offset="1" stop-color="#ececf0"/></linearGradient>
+<linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".42"/><stop offset=".25" stop-color="#ffffff" stop-opacity=".12"/><stop offset="1" stop-color="#ffffff" stop-opacity=".05"/></linearGradient>
+<linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".085"/><stop offset=".5" stop-color="#ffffff" stop-opacity=".035"/><stop offset="1" stop-color="#ffffff" stop-opacity=".02"/></linearGradient>
+<pattern id="brush" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="4" height="1" fill="#fff" fill-opacity=".012"/></pattern>
+<radialGradient id="o1"><stop offset="0" stop-color="#e6e6ee" stop-opacity=".22"/><stop offset="1" stop-color="#e6e6ee" stop-opacity="0"/></radialGradient>
+<radialGradient id="o2"><stop offset="0" stop-color="#b9b9c4" stop-opacity=".16"/><stop offset="1" stop-color="#b9b9c4" stop-opacity="0"/></radialGradient>
+<radialGradient id="o3"><stop offset="0" stop-color="#ffffff" stop-opacity=".10"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
 <pattern id="dots" width="26" height="26" patternUnits="userSpaceOnUse"><circle cx="1.5" cy="1.5" r="1" fill="#fff" fill-opacity=".07"/></pattern>
 <linearGradient id="hl" gradientUnits="userSpaceOnUse" x1="64" y1="0" x2="640" y2="0">
-  <stop offset="0" stop-color="#ff9a42"/><stop offset=".5" stop-color="#ff5468"/><stop offset="1" stop-color="#ff9a42"/>
+  <stop offset="0" stop-color="#8e8e98"/><stop offset=".45" stop-color="#ffffff"/><stop offset=".55" stop-color="#ffffff"/><stop offset="1" stop-color="#8e8e98"/>
   <animateTransform attributeName="gradientTransform" type="translate" from="-300 0" to="300 0" dur="6s" repeatCount="indefinite"/>
 </linearGradient>
 <linearGradient id="sw" gradientUnits="userSpaceOnUse" x1="925" y1="55" x2="808.1" y2="122.5">
-  <stop offset="0" stop-color="#7cf0c0" stop-opacity=".55"/><stop offset="1" stop-color="#7cf0c0" stop-opacity="0"/></linearGradient>
+  <stop offset="0" stop-color="#ffffff" stop-opacity=".55"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
 <filter id="blur" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="30"/></filter>
 <clipPath id="disc"><circle cx="925" cy="190" r="135"/></clipPath></defs>
 <style>
-text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;fill:#f5f5f7}
+text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;fill:#f4f4f6}
 .m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
-.mut{fill:#9b9ba6} .faint{fill:#5c5c68}
+.mut{fill:#a3a3ad} .faint{fill:#62626c}
 .b{font-weight:700}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
 @keyframes bo0{0%,10.55%{opacity:.16}10.56%{opacity:1}40.56%{opacity:.55}100%{opacity:.16}}@keyframes bs0{0%,10.55%{transform:scale(1)}10.56%{transform:scale(2.3)}19.56%{transform:scale(1)}100%{transform:scale(1)}}@keyframes bo1{0%,25.55%{opacity:.16}25.56%{opacity:1}55.56%{opacity:.55}100%{opacity:.16}}@keyframes bs1{0%,25.55%{transform:scale(1)}25.56%{transform:scale(2.3)}34.56%{transform:scale(1)}100%{transform:scale(1)}}@keyframes bo2{0%,41.66%{opacity:.16}41.67%{opacity:1}71.67%{opacity:.55}100%{opacity:.16}}@keyframes bs2{0%,41.66%{transform:scale(1)}41.67%{transform:scale(2.3)}50.67%{transform:scale(1)}100%{transform:scale(1)}}@keyframes bo3{0%,57.77%{opacity:.16}57.78%{opacity:1}87.78%{opacity:.55}100%{opacity:.16}}@keyframes bs3{0%,57.77%{transform:scale(1)}57.78%{transform:scale(2.3)}66.78%{transform:scale(1)}100%{transform:scale(1)}}@keyframes bo4{0%,72.77%{opacity:.16}72.78%{opacity:1}99.90%{opacity:.55}100%{opacity:.16}}@keyframes bs4{0%,72.77%{transform:scale(1)}72.78%{transform:scale(2.3)}81.78%{transform:scale(1)}100%{transform:scale(1)}}@keyframes spin{to{transform:rotate(360deg)}}@keyframes drift1{to{transform:translate(40px,28px)}}@keyframes drift2{to{transform:translate(-46px,-22px)}}@keyframes ping{0%{transform:scale(1);opacity:.9}100%{transform:scale(14);opacity:0}}</style>
 
-<rect width="1200" height="380" fill="url(#bg)"/>
+<rect width="1200" height="380" fill="url(#bgm)"/>
+<rect width="1200" height="380" fill="url(#brush)"/>
 <rect width="1200" height="380" fill="url(#dots)"/>
 <g filter="url(#blur)">
   <circle cx="190" cy="40" r="190" fill="url(#o1)" style="animation:drift1 14s ease-in-out infinite alternate"/>
   <circle cx="1100" cy="340" r="200" fill="url(#o2)" style="animation:drift2 17s ease-in-out infinite alternate"/>
   <circle cx="640" cy="400" r="170" fill="url(#o3)" style="animation:drift1 19s ease-in-out infinite alternate"/>
 </g>
-<rect x="0.5" y="0.5" width="1199" height="379" rx="22" fill="none" stroke="#fff" stroke-opacity=".10"/>
+<rect x="0.5" y="0.5" width="1199" height="379" rx="22" fill="none" stroke="url(#rim)"/>
 
-<rect x="64" y="58" width="68" height="68" rx="18" fill="#fff" fill-opacity=".06" stroke="#fff" stroke-opacity=".18"/>
-<text x="98" y="101" text-anchor="middle" font-size="22" class="b" letter-spacing="1">FSV</text>
+<rect x="64" y="58" width="68" height="68" rx="18" fill="url(#glass)" stroke="url(#rim)"/>
+<path d="M82 58.8 H114" stroke="#fff" stroke-opacity=".5"/>
+<text x="98" y="101" text-anchor="middle" font-size="22" class="b" letter-spacing="1" style="fill:url(#chrome)">FSV</text>
 <text x="150" y="84" font-size="13" class="mut" letter-spacing="3">WEB SECURITY SCANNER  ·  MCP TOOLKIT</text>
-<text x="150" y="108" font-size="13" class="m mut">v2.0 · detection-only · local-first</text>
+<text x="150" y="108" font-size="13" class="m mut">v2.1 · detection-only · local-first</text>
 
-<text x="62" y="212" font-size="58" class="b" letter-spacing="-1.5">Finds what</text>
+<text x="62" y="212" font-size="58" class="b" letter-spacing="-1.5" style="fill:url(#chrome)">Finds what</text>
 <text x="62" y="276" font-size="58" class="b" letter-spacing="-1.5" style="fill:url(#hl)">checklists miss.</text>
 <text x="64" y="324" font-size="16" class="m mut">dangling DNS · orphaned buckets · dead SPF includes · source maps · attack paths</text>
 
 <g>
-  <circle cx="925" cy="190" r="135" fill="#0b0b12" fill-opacity=".7"/>
+  <circle cx="925" cy="190" r="135" fill="url(#glass)"/>
+  <circle cx="925" cy="190" r="135" fill="#060607" fill-opacity=".55"/>
   <circle cx="925" cy="190" r="135.0" fill="none" stroke="#fff" stroke-opacity=".09"/><circle cx="925" cy="190" r="89.1" fill="none" stroke="#fff" stroke-opacity=".09"/><circle cx="925" cy="190" r="44.6" fill="none" stroke="#fff" stroke-opacity=".09"/><line x1="925" y1="190" x2="925.0" y2="55.0" stroke="#fff" stroke-opacity=".05"/><line x1="925" y1="190" x2="1020.5" y2="94.5" stroke="#fff" stroke-opacity=".05"/><line x1="925" y1="190" x2="1060.0" y2="190.0" stroke="#fff" stroke-opacity=".05"/><line x1="925" y1="190" x2="1020.5" y2="285.5" stroke="#fff" stroke-opacity=".05"/><line x1="925" y1="190" x2="925.0" y2="325.0" stroke="#fff" stroke-opacity=".05"/><line x1="925" y1="190" x2="829.5" y2="285.5" stroke="#fff" stroke-opacity=".05"/><line x1="925" y1="190" x2="790.0" y2="190.0" stroke="#fff" stroke-opacity=".05"/><line x1="925" y1="190" x2="829.5" y2="94.5" stroke="#fff" stroke-opacity=".05"/>
   <g clip-path="url(#disc)">
     <g style="transform-origin:925px 190px;animation:spin 6.0s linear infinite">
       <path d="M925 190 L925 55 A135 135 0 0 0 808.1 122.5 Z" fill="url(#sw)"/>
-      <line x1="925" y1="190" x2="925" y2="55" stroke="#7cf0c0" stroke-width="2" stroke-opacity=".9"/>
+      <line x1="925" y1="190" x2="925" y2="55" stroke="#ffffff" stroke-width="2" stroke-opacity=".9"/>
     </g>
   </g>
-  <circle cx="925" cy="190" r="135" fill="none" stroke="#fff" stroke-opacity=".22"/>
-  <circle cx="925" cy="190" r="4" fill="none" stroke="#7cf0c0" stroke-width="1.5" vector-effect="non-scaling-stroke" style="transform-box:fill-box;transform-origin:center;animation:ping 3s ease-out infinite"/>
-  <circle cx="925" cy="190" r="4" fill="#7cf0c0"/>
-  <g style="animation:bo0 6.0s linear infinite;opacity:1"><circle cx="976.5" cy="124.0" r="5" fill="#ff9a42" style="transform-box:fill-box;transform-origin:center;animation:bs0 6.0s linear infinite"/><circle cx="976.5" cy="124.0" r="11" fill="none" stroke="#ff9a42" stroke-opacity=".5"/><text x="1000.5" y="128.0" text-anchor="start" class="m" font-size="12" fill="#ff9a42" style="fill:#ff9a42">dangling CNAME</text></g><g style="animation:bo1 6.0s linear infinite;opacity:1"><circle cx="1043.7" cy="194.1" r="5" fill="#ff5468" style="transform-box:fill-box;transform-origin:center;animation:bs1 6.0s linear infinite"/><circle cx="1043.7" cy="194.1" r="11" fill="none" stroke="#ff5468" stroke-opacity=".5"/><text x="1067.7" y="198.1" text-anchor="start" class="m" font-size="12" fill="#ff5468" style="fill:#ff5468">orphaned bucket</text></g><g style="animation:bo2 6.0s linear infinite;opacity:1"><circle cx="962.1" cy="254.3" r="5" fill="#ff9a42" style="transform-box:fill-box;transform-origin:center;animation:bs2 6.0s linear infinite"/><circle cx="962.1" cy="254.3" r="11" fill="none" stroke="#ff9a42" stroke-opacity=".5"/><text x="986.1" y="258.3" text-anchor="start" class="m" font-size="12" fill="#ff9a42" style="fill:#ff9a42">SPF include → NXDOMAIN</text></g><g style="animation:bo3 6.0s linear infinite;opacity:1"><circle cx="874.3" cy="285.4" r="5" fill="#ff5468" style="transform-box:fill-box;transform-origin:center;animation:bs3 6.0s linear infinite"/><circle cx="874.3" cy="285.4" r="11" fill="none" stroke="#ff5468" stroke-opacity=".5"/><text x="850.3" y="289.4" text-anchor="end" class="m" font-size="12" fill="#ff5468" style="fill:#ff5468">XSS → session</text></g><g style="animation:bo4 6.0s linear infinite;opacity:1"><circle cx="863.5" cy="198.6" r="5" fill="#f2d44b" style="transform-box:fill-box;transform-origin:center;animation:bs4 6.0s linear infinite"/><circle cx="863.5" cy="198.6" r="11" fill="none" stroke="#f2d44b" stroke-opacity=".5"/><text x="839.5" y="202.6" text-anchor="end" class="m" font-size="12" fill="#f2d44b" style="fill:#f2d44b">source map</text></g>
+  <circle cx="925" cy="190" r="135" fill="none" stroke="url(#rim)" stroke-width="1.5"/>
+  <circle cx="925" cy="190" r="4" fill="none" stroke="#ffffff" stroke-width="1.5" vector-effect="non-scaling-stroke" style="transform-box:fill-box;transform-origin:center;animation:ping 3s ease-out infinite"/>
+  <circle cx="925" cy="190" r="4" fill="#ffffff"/>
+  <g style="animation:bo0 6.0s linear infinite;opacity:1"><circle cx="976.5" cy="124.0" r="5" fill="#dcdce2" style="transform-box:fill-box;transform-origin:center;animation:bs0 6.0s linear infinite"/><circle cx="976.5" cy="124.0" r="11" fill="none" stroke="#dcdce2" stroke-opacity=".5"/><text x="1000.5" y="128.0" text-anchor="start" class="m" font-size="12" fill="#dcdce2" style="fill:#dcdce2">dangling CNAME</text></g><g style="animation:bo1 6.0s linear infinite;opacity:1"><circle cx="1043.7" cy="194.1" r="5" fill="#ffffff" style="transform-box:fill-box;transform-origin:center;animation:bs1 6.0s linear infinite"/><circle cx="1043.7" cy="194.1" r="11" fill="none" stroke="#ffffff" stroke-opacity=".5"/><text x="1067.7" y="198.1" text-anchor="start" class="m" font-size="12" fill="#ffffff" style="fill:#ffffff">orphaned bucket</text></g><g style="animation:bo2 6.0s linear infinite;opacity:1"><circle cx="962.1" cy="254.3" r="5" fill="#dcdce2" style="transform-box:fill-box;transform-origin:center;animation:bs2 6.0s linear infinite"/><circle cx="962.1" cy="254.3" r="11" fill="none" stroke="#dcdce2" stroke-opacity=".5"/><text x="986.1" y="258.3" text-anchor="start" class="m" font-size="12" fill="#dcdce2" style="fill:#dcdce2">SPF include → NXDOMAIN</text></g><g style="animation:bo3 6.0s linear infinite;opacity:1"><circle cx="874.3" cy="285.4" r="5" fill="#ffffff" style="transform-box:fill-box;transform-origin:center;animation:bs3 6.0s linear infinite"/><circle cx="874.3" cy="285.4" r="11" fill="none" stroke="#ffffff" stroke-opacity=".5"/><text x="850.3" y="289.4" text-anchor="end" class="m" font-size="12" fill="#ffffff" style="fill:#ffffff">XSS → session</text></g><g style="animation:bo4 6.0s linear infinite;opacity:1"><circle cx="863.5" cy="198.6" r="5" fill="#b4b4bd" style="transform-box:fill-box;transform-origin:center;animation:bs4 6.0s linear infinite"/><circle cx="863.5" cy="198.6" r="11" fill="none" stroke="#b4b4bd" stroke-opacity=".5"/><text x="839.5" y="202.6" text-anchor="end" class="m" font-size="12" fill="#b4b4bd" style="fill:#b4b4bd">source map</text></g>
 </g>
 <text x="925" y="359" text-anchor="middle" font-size="12" class="m mut">never claims a resource · never tests a credential</text>
 </svg>

@@ -66,7 +66,16 @@ errors. Two direct checks complete it: Werkzeug's `/console` and Ignition's `/_i
 (`can_execute_commands: true`, the CVE-2021-3129 precondition). Signatures must all match, so a custom
 404 page that merely mentions "debug" does not fire.
 
-## 7. Attack paths — `correlation`
+## 7. Third-party script supply chain — `supply_chain`
+Every `<script src>` from another site runs with your page's full authority. In 2024 polyfill.io changed owners
+and served malware to over 100,000 sites; the same operator ran bootcdn, bootcss and staticfile. FSV flags
+scripts and stylesheets from those domains (a dated list, with what happened) and from domains that **no longer
+exist** — expired, so anyone can register them and serve code into your pages. "No longer exists" needs
+NXDOMAIN for both NS and SOA of the registrable domain, *and* a resolver that demonstrably answers for names that
+exist (`iana.org`, `example.com`): behind filtered or captive DNS — where everything looks NXDOMAIN — nothing is
+claimed. Only DNS is queried; the third-party files are never fetched.
+
+## 8. Attack paths — `correlation`
 Individually "medium" findings that combine into a compromise. FSV reads its own findings (sending nothing more) and adds a
 finding when a chain is *actually present*:
 
