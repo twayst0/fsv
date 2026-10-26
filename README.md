@@ -9,7 +9,7 @@
   <img alt="MCP server" src="https://img.shields.io/badge/MCP-ready-e5e5e5?style=flat-square&labelColor=000000">
   <img alt="detection only" src="https://img.shields.io/badge/mode-detection--only-9a9aa3?style=flat-square&labelColor=000000">
   <img alt="tests" src="https://img.shields.io/badge/tests-360%2B-9a9aa3?style=flat-square&labelColor=000000">
-  <img alt="license: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-5f5f68?style=flat-square&labelColor=000000">
+  <img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-5f5f68?style=flat-square&labelColor=000000">
 </p>
 
 <p align="center">
@@ -325,10 +325,8 @@ Questions, collaboration and licensing enquiries are welcome by email or Discord
 
 ## License
 
-**GNU AGPL-3.0** — free to use, study, modify and share, for anyone, including companies. If you distribute
-a modified FSV or offer it to others as a network service, your changes must be published under the same
-licence. Need to embed FSV in a closed product or service? Commercial licences are available —
-**statways1707@gmail.com**. Copyright © 2026 twayst0. See [LICENSE](LICENSE).
+**MIT** — free to use, modify and share, for anyone, including commercially. Keep the copyright and licence
+notice. Copyright © 2026 twayst0. See [LICENSE](LICENSE).
 
 ## Disclaimer
 

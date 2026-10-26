@@ -11,7 +11,7 @@ Use ONLY against systems you own or are explicitly authorized to test.
 
 __version__ = "2.2.1"
 __author__  = "twayst0 (tways)"
-__license__ = "AGPL-3.0-only (commercial licences available)"
+__license__ = "MIT"
 
 BANNER = r"""
   ███████╗███████╗██╗   ██╗

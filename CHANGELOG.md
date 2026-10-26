@@ -1,6 +1,8 @@
 # Changelog
 
 ## 2.2.1
+- **Licence: MIT.** FSV is now released under the MIT License (2.2.0 was AGPL-3.0, earlier versions a custom non-commercial licence). The CLA now says contributions come in under MIT and create no co-ownership.
+- Author shown as `twayst0` everywhere.
 - **Official MCP Registry**: `server.json` (`io.github.twayst0/fsv`, runs as `uvx fsv mcp`); the publish workflow registers each new version via GitHub OIDC.
 - The PyPI description carries the registry's ownership marker (`mcp-name: io.github.twayst0/fsv`); README shows the no-install `uvx fsv mcp` setup.
 
