@@ -10,8 +10,8 @@ readme = "docs/PYPI.md"
 requires-python = ">=3.11"
 license = "AGPL-3.0-only"
 license-files = ["LICENSE"]
-authors = [{ name = "Anıl Kara (tways)", email = "statways1707@gmail.com" }]
-maintainers = [{ name = "Anıl Kara (tways)", email = "statways1707@gmail.com" }]
+authors = [{ name = "twayst0 (tways)", email = "statways1707@gmail.com" }]
+maintainers = [{ name = "twayst0 (tways)", email = "statways1707@gmail.com" }]
 keywords = [
     "security", "scanner", "vulnerability", "dast", "owasp", "mcp", "model-context-protocol",
     "subdomain-takeover", "supply-chain", "spf", "dmarc", "appsec", "devsecops",

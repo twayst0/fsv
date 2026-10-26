@@ -1,6 +1,6 @@
 # FSV Individual Contributor License Agreement
 
-Thank you for contributing to FSV ("the Project"), owned and maintained by Anıl Kara, GitHub `twayst0`
+Thank you for contributing to FSV ("the Project"), owned and maintained by GitHub user `twayst0`
 ("the Maintainer"). This Agreement makes clear what rights you grant in your Contributions, so the Project
 can keep distributing them under its own licence — today the GNU AGPL-3.0, alongside commercial licences
 the Maintainer may grant — and so no contribution creates co-ownership of the Project.

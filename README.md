@@ -315,7 +315,7 @@ One engine, four front doors. Address policy and proof of control live in the en
 
 ## Contact
 
-**Anıl Kara (tways)** — author and maintainer
+**twayst0 (tways)** — author and maintainer
 
 - Email: **statways1707@gmail.com**
 - Discord: **.tways**
@@ -328,7 +328,7 @@ Questions, collaboration and licensing enquiries are welcome by email or Discord
 **GNU AGPL-3.0** — free to use, study, modify and share, for anyone, including companies. If you distribute
 a modified FSV or offer it to others as a network service, your changes must be published under the same
 licence. Need to embed FSV in a closed product or service? Commercial licences are available —
-**statways1707@gmail.com**. Copyright © 2026 twayst0 (Anıl Kara). See [LICENSE](LICENSE).
+**statways1707@gmail.com**. Copyright © 2026 twayst0. See [LICENSE](LICENSE).
 
 ## Disclaimer
 
