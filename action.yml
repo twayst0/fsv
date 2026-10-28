@@ -53,7 +53,7 @@ runs:
         [ -n "$id" ] && fsv report "$id" --format html -o fsv-report.html || true
     - name: Upload SARIF
       if: ${{ inputs.upload-sarif == 'true' && hashFiles('fsv.sarif') != '' }}
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       with: { sarif_file: fsv.sarif, category: fsv }
     - name: Upload report
       if: ${{ hashFiles('fsv-report.html') != '' }}
