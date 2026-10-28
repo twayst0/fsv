@@ -34,7 +34,7 @@ jobs:
           python -m venv /tmp/v && /tmp/v/bin/pip install dist/*.whl
           cd /tmp && /tmp/v/bin/fsv --version && /tmp/v/bin/fsv modules --json > /dev/null
           /tmp/v/bin/python -c "import fsv.mcp.server, fsv.web.app"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
