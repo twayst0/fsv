@@ -1,7 +1,7 @@
 fastapi>=0.115.6
 uvicorn[standard]>=0.30
 aiohttp>=3.10
-aiosqlite>=0.20
+aiosqlite>=0.22.1
 pydantic>=2.8
 click>=8.1
 rich>=13.8
