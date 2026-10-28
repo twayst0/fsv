@@ -5,10 +5,10 @@
 <p align="center">
   <a href="https://github.com/twayst0/fsv/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/twayst0/fsv/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-111111?style=flat-square&logo=python&logoColor=white&labelColor=000000">
-  <img alt="32 modules" src="https://img.shields.io/badge/modules-32-e5e5e5?style=flat-square&labelColor=000000">
+  <img alt="38 modules" src="https://img.shields.io/badge/modules-38-e5e5e5?style=flat-square&labelColor=000000">
   <img alt="MCP server" src="https://img.shields.io/badge/MCP-ready-e5e5e5?style=flat-square&labelColor=000000">
   <img alt="detection only" src="https://img.shields.io/badge/mode-detection--only-9a9aa3?style=flat-square&labelColor=000000">
-  <img alt="tests" src="https://img.shields.io/badge/tests-360%2B-9a9aa3?style=flat-square&labelColor=000000">
+  <img alt="tests" src="https://img.shields.io/badge/tests-500%2B-9a9aa3?style=flat-square&labelColor=000000">
   <img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-5f5f68?style=flat-square&labelColor=000000">
 </p>
 
@@ -167,6 +167,7 @@ Requires **Python 3.11+**. Docker: see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) 
 ```bash
 fsv scan example.com --authorize                       # full scan of a site you own
 fsv scan example.com --authorize --profile passive     # read-only: no payloads sent
+fsv scan example.com --authorize --profile deep        # thorough: hidden parameters, ~90 more files, more payload shapes (slower)
 fsv web                                                # dashboard → http://127.0.0.1:7474
 ```
 
@@ -220,7 +221,7 @@ fsv scan staging.example.com --authorize                                        
 
 ```yaml
 # .github/workflows/security.yml
-- uses: twayst0/fsv@v2.2.1          # pin a release tag (or a commit SHA)
+- uses: twayst0/fsv@v2.3.0          # pin a release tag (or a commit SHA)
   with:
     target: https://staging.example.com
     authorized: "true"          # you confirm you may test this target
@@ -246,9 +247,9 @@ application, where typical DAST scans don't go, and the two work well side by si
 | Fixes as server config, triage that persists, CI baselines, MCP | — | built in |
 | Deep input fuzzing, authenticated spidering, scripted auth, JS-rendered apps | **yes** | basic |
 
-## Modules (32)
+## Modules (38)
 
-FSV ships **32 modules** — 26 passive, 6 active. Run `fsv modules` for the live list.
+FSV ships **38 modules** — 32 passive, 6 active. Run `fsv modules` for the live list.
 
 <details>
 <summary><b>The full catalogue</b> &nbsp;<sub>(or run <code>fsv modules</code>)</sub></summary>
@@ -262,16 +263,22 @@ FSV ships **32 modules** — 26 passive, 6 active. Run `fsv modules` for the liv
 | `js_libs` | known-vulnerable & end-of-life JavaScript libraries | passive · url |
 | `supply_chain` | scripts/styles from compromised or abandoned CDNs (polyfill.io, bootcdn, staticfile, rawgit) or from domains that are no longer registered | passive · url · ↗ |
 | `debug_mode` | framework debug mode in production (Django `DEBUG=True`, Werkzeug console, Rails, Laravel Ignition, Symfony, Express, ASP.NET) — seen on error pages a crawler never visits | passive · site |
-| `paths` | ~100 exposed files/endpoints, each content-validated (`.git`, `.env`, actuator, pprof, tfstate, backups…) | passive · site |
+| `paths` | ~100 exposed files/endpoints, each content-validated (`.git`, `.env`, actuator, pprof, tfstate, backups…); **deep: ~90 more** + backups named after the host | passive · site |
+| `html_leaks` | secrets / internal hosts in HTML comments, pre-filled password fields, trust-bearing hidden fields (role, price, is_admin) | passive · url |
+| `dom_sinks` | **DOM XSS** (URL → innerHTML/eval/redirect), `postMessage` without origin check — static analysis of first-party JS | passive · url |
+| `well_known` | OIDC/OAuth discovery (http endpoints, `alg=none`, implicit/password grants, no PKCE) and **private/symmetric keys published in JWKS** | passive · site |
+| `api_docs` | reads exposed OpenAPI (unauthenticated & sensitive routes, HTTP servers, secrets); Swagger UI, GraphiQL, Playground | passive · site |
+| `https_redirect` | does port 80 serve content / hop through another host over HTTP / never reach HTTPS; HSTS without `includeSubDomains` | passive · site |
+| `robots_review` | sensitive `Disallow` entries, (deep) whether they answer, staging hosts in the sitemap | passive · site |
 | `tech` | stack fingerprint + **end-of-life** software from a dated table | passive · site |
 | `headers` · `csp_analyzer` | security headers · deep CSP review | passive |
-| `ssl` | HTTPS, certificate validity, weak protocols/ciphers | passive · site |
+| `ssl` | certificate trust classified from OpenSSL (expired · self-signed · incomplete chain · hostname mismatch), key size, SHA-1, and **TLS 1.0/1.1 the server really accepts** | passive · site |
 | `cookies` | Secure / HttpOnly / SameSite / parent-domain scope | passive |
 | `sri` · `mixed_content` · `clickjacking` · `form_security` · `csrf` | page-level hygiene | passive |
 | `info_disclosure` · `dir_listing` · `http_methods` · `security_txt` · `waf_detect` · `graphql_introspection` · `jwt_analysis` · `subdomain` | exposure & recon | passive |
-| `xss` · `sqli` · `ssti` · `open_redirect` · `cors` · `host_header_injection` | reflected/error-based/marker checks (benign payloads) | **active** |
+| `xss` · `sqli` · `ssti` · `open_redirect` · `cors` · `host_header_injection` | reflected/error-based/marker checks (benign payloads). XSS is **context-aware** (HTML text, attribute, JS string); SQLi reports only errors the injection *caused* | **active** |
 
-↗ contacts hosts other than the target (skip with `--no-external`). `passive` = sends no crafted payloads. **Profiles:** `passive` (only passive modules), `balanced` (default), `aggressive` (higher rate/concurrency).
+↗ contacts hosts other than the target (skip with `--no-external`). `passive` = sends no crafted payloads. **Profiles:** `passive` (only passive modules), `balanced` (default), `aggressive` (higher rate/concurrency), `deep` (widest crawl, hidden-parameter discovery, larger exposed-file list, more payload shapes — slower).
 </details>
 
 ## How it works

@@ -181,7 +181,7 @@ async def api_info(request: Request) -> dict:
         "name": "FSV",
         "version": __version__,
         "modules": registry.describe(),
-        "profiles": ["passive", "balanced", "aggressive"],
+        "profiles": ["passive", "balanced", "aggressive", "deep"],
         "report_formats": list(report_mod.FORMATS),
         "auth_required": bool(API_TOKEN),
         "verification_required": REQUIRE_VERIFICATION,

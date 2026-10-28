@@ -85,6 +85,10 @@ def new_scan_id() -> str:
 
 # ── engine ────────────────────────────────────────────────────────────────────
 
+DEEP_MIN_URLS = 300
+DEEP_MIN_DEPTH = 4
+
+
 def _profile_tuning(cfg: ScanConfig) -> tuple[float, int]:
     """Apply profile presets on top of explicit config."""
     rate, threads = cfg.rate_per_sec, cfg.threads
@@ -92,6 +96,8 @@ def _profile_tuning(cfg: ScanConfig) -> tuple[float, int]:
         rate, threads = max(rate, 40.0), max(threads, 20)
     elif cfg.profile == ScanProfile.PASSIVE:
         rate = min(rate, 15.0)
+    elif cfg.profile == ScanProfile.DEEP:
+        rate = max(rate, 30.0)                 # it sends many more requests; keep the wall-clock time reasonable
     return rate, threads
 
 
@@ -118,6 +124,10 @@ async def run_scan(
     ScanProgress updates throughout.
     """
     await db.init_db()
+    if scan_config.deep:
+        # explicit larger values are kept; the defaults are widened
+        scan_config = scan_config.model_copy(update={"max_urls": max(scan_config.max_urls, DEEP_MIN_URLS),
+                                                     "depth": max(scan_config.depth, DEEP_MIN_DEPTH)})
     scan_id    = scan_id or new_scan_id()
     started_at = datetime.now(timezone.utc).isoformat()
 

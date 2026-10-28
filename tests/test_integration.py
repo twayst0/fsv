@@ -21,9 +21,9 @@ async def site():
                 content_type="text/html",
                 headers={"Server": "nginx/1.1", "Set-Cookie": "SID=x; Path=/"})
         if p == "/s":
-            return web.Response(
-                text=f"<html>{request.query.get('x','')} you have an error in your sql syntax</html>",
-                content_type="text/html")
+            x = request.query.get('x', '')
+            err = " you have an error in your sql syntax" if ("'" in x or '"' in x) else ""   # fails only when injected
+            return web.Response(text=f"<html>{x}{err}</html>", content_type="text/html")
         return web.Response(text=f"<html>ok {request.query.get('q','')}</html>",
                             content_type="text/html")
     app = web.Application(); app.router.add_route("*", "/{t:.*}", handler)
