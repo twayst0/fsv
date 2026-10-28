@@ -57,7 +57,7 @@ runs:
       with: { sarif_file: fsv.sarif, category: fsv }
     - name: Upload report
       if: ${{ hashFiles('fsv-report.html') != '' }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: fsv-report
         path: |
