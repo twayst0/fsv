@@ -1,7 +1,6 @@
 """FSV Module — Host Header Injection"""
 
 from __future__ import annotations
-from urllib.parse import urlparse
 from fsv.core.scanner import BaseScanner
 from fsv.core.models import Finding, Severity, Confidence
 

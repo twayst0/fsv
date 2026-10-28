@@ -34,6 +34,9 @@ resolves the target itself, so FSV's private-address guard could no longer see w
 ## Network egress
 FSV needs outbound HTTP(S) to targets and DNS. Optional features add third parties: `--ct-logs` (crt.sh) and the `cloud_storage` / `takeover` modules
 (object-storage endpoints, public DNS). `--no-external` / `external = false` removes the latter two.
+The dashboard itself loads nothing from third parties (fonts are the system's). A webhook (`FSV_WEBHOOK_URL`, `--notify`) is the one
+destination *you* add: it receives a short summary (grade, counts, the worst titles and their URLs — never evidence) for scans with
+findings at or above `FSV_WEBHOOK_MIN_SEVERITY` (default `high`). It is operator-configured, never settable through the web API.
 
 ## Backup & retention
 Everything lives in one SQLite file (`FSV_DB`). `fsv prune --keep N` limits history. Scan data can contain sensitive evidence — protect the volume.

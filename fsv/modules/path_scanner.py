@@ -5,7 +5,7 @@ import asyncio
 import json
 import re
 from typing import Callable
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 
 from fsv.core.scanner import BaseScanner
 from fsv.core.models import Finding, Severity, Confidence

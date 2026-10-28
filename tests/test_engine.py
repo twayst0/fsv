@@ -1,4 +1,3 @@
-import pytest
 from fsv.core.engine import (
     aggregate_findings, sort_findings, same_origin, canonical_url, Crawler,
 )
