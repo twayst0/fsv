@@ -678,3 +678,59 @@ button.triage{border:0;background:transparent;font-family:inherit}
   header{flex-wrap:nowrap}
   .scan-row .btn{flex:1}
 }
+
+/* ── v2.3.1: spinner no longer overlaps the label, themed dropdowns, circular theme reveal ── */
+.btn.primary{min-width:148px}
+.btn.primary.loading{padding-right:50px}
+.btn.primary.loading span{opacity:.75}
+.btn.primary.loading::before{right:18px}
+
+:root[data-theme="dark"]{color-scheme:dark}
+:root[data-theme="light"]{color-scheme:light}
+
+.cs-native{position:absolute!important;inset:0;width:100%;height:100%;opacity:0;pointer-events:none}
+.cs-btn{height:38px;min-width:64px;border-radius:10px;border:1px solid var(--stroke);width:100%;text-align:left;
+  background:rgba(0,0,0,.22);color:var(--text);padding:0 28px 0 12px;font-size:12.5px;font-family:inherit;cursor:pointer;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:border-color .15s,background .15s,box-shadow .15s}
+:root[data-theme="light"] .cs-btn{background:rgba(255,255,255,.55)}
+.sel.sm .cs-btn{height:34px;font-size:12px;padding:0 26px 0 11px}
+.cs-btn:hover{background:var(--glass-2)}
+.cs-btn[aria-expanded=true]{border-color:var(--low);box-shadow:0 0 0 3px rgba(99,168,255,.16)}
+.sel.cs::after{transition:transform .25s var(--spring)}
+.sel.cs:has(.cs-btn[aria-expanded=true])::after{transform:translateY(-50%) rotate(180deg)}
+
+.cs-menu{position:fixed;z-index:400;padding:6px;border-radius:13px;overflow-y:auto;overscroll-behavior:contain;
+  opacity:0;transform:translateY(-6px) scale(.96);pointer-events:none;
+  background:var(--glass-2);box-shadow:0 18px 50px rgba(0,0,0,.5),inset 0 1px 0 var(--glass-hi);
+  backdrop-filter:blur(var(--blur-strong)) saturate(1.3);-webkit-backdrop-filter:blur(var(--blur-strong)) saturate(1.3);
+  transition:opacity .16s var(--ease),transform .22s var(--spring)}
+.cs-menu.in{opacity:1;transform:none;pointer-events:auto}
+.cs-menu.out{opacity:0;transform:translateY(-4px) scale(.97)}
+:root[data-theme="light"] .cs-menu{background:rgba(255,255,255,.92);box-shadow:0 18px 50px rgba(20,20,40,.22),inset 0 1px 0 #fff}
+.cs-group{font-size:10px;text-transform:uppercase;letter-spacing:1.1px;color:var(--faint);padding:9px 10px 4px;font-weight:600}
+.cs-opt{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;font-size:12.5px;color:var(--text);cursor:pointer;outline:none;
+  transition:background .12s}
+.cs-opt:hover,.cs-opt:focus{background:var(--glass-hi)}
+:root[data-theme="light"] .cs-opt:hover,:root[data-theme="light"] .cs-opt:focus{background:rgba(10,10,20,.07)}
+.cs-opt.sel{font-weight:600}
+.cs-opt.sel::after{content:"✓";margin-left:auto;color:var(--low);font-size:11px}
+.cs-opt:focus-visible{outline:2px solid var(--low);outline-offset:-2px}
+
+/* circular theme reveal (View Transitions): the new theme grows out of the toggle button */
+::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
+::view-transition-old(root){z-index:1}
+::view-transition-new(root){z-index:2}
+@media (prefers-reduced-motion:reduce){
+  .cs-menu{transition:none}.sel.cs::after{transition:none}
+}
+.cs-opt{white-space:nowrap}
+.cs-opt.sel::after{margin-left:auto;padding-left:16px}
+:root[data-theme="light"] .btn.primary.loading::before{border-color:rgba(10,10,20,.18);border-top-color:#121217}
+:root[data-theme="light"] .btn.primary.loading span{opacity:.85}
+:root[data-theme="light"] .btn.danger{color:#c4283f;background:rgba(255,84,104,.12)}
+
+/* profile hint under the options row */
+.profile-hint{display:none;margin-top:12px;padding:9px 13px;border-radius:11px;font-size:12px;line-height:1.5;color:var(--muted);
+  background:var(--glass);border:1px solid var(--stroke-soft)}
+.profile-hint.show{display:block;animation:rise .3s var(--ease) both}
+.profile-hint[data-profile=deep]{color:var(--text);border-color:rgba(255,154,66,.4);background:rgba(255,154,66,.08)}

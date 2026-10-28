@@ -39,6 +39,11 @@ class BaseScanner(ABC):
         self.http = http
         self.scan_config = scan_config
 
+    @property
+    def deep(self) -> bool:
+        """True under the `deep` profile: a module may then widen its own search (more paths, parameters, payload shapes)."""
+        return self.scan_config.deep
+
     @abstractmethod
     async def scan(self, url: str) -> list[Finding]:
         ...

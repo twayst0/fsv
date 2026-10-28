@@ -81,10 +81,14 @@ class ScanProfile(str, Enum):
       passive    — no payloads sent; headers/SSL/DNS/fingerprint only
       balanced   — passive + safe active checks, polite rate (default)
       aggressive — all modules, higher concurrency & rate
+      deep       — all modules, as thorough as FSV gets: crawls wider and deeper, hunts for hidden parameters,
+                   probes a larger list of exposed files and tries more payload shapes. Slower and noisier
+                   (more requests) — for targets you own and can afford to hit harder
     """
     PASSIVE    = "passive"
     BALANCED   = "balanced"
     AGGRESSIVE = "aggressive"
+    DEEP       = "deep"
 
 
 def finding_fingerprint(module: str, title: str, parameter: str | None, url: str) -> str:
@@ -171,6 +175,10 @@ class ScanConfig(BaseModel):
     @classmethod
     def _normalize_target(cls, v: str) -> str:
         return normalize_target(v)
+
+    @property
+    def deep(self) -> bool:
+        return self.profile == ScanProfile.DEEP
 
     @field_validator("max_urls", "timeout", "depth", "threads", "max_retries", "max_duration")
     @classmethod

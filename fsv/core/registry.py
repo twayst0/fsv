@@ -93,6 +93,12 @@ _EXTRA: list[tuple[str, str]] = [
     ("cloud_storage", "CloudStorageScanner"),
     ("debug_mode", "DebugModeScanner"),
     ("supply_chain", "SupplyChainScanner"),
+    ("html_leaks", "HTMLLeaksScanner"),
+    ("dom_sinks", "DOMSinksScanner"),
+    ("well_known", "WellKnownScanner"),
+    ("api_docs", "APIDocsScanner"),
+    ("https_redirect", "HTTPSRedirectScanner"),
+    ("robots_review", "RobotsReviewScanner"),
 ]
 
 

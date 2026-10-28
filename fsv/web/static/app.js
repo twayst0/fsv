@@ -44,14 +44,30 @@ const STATUS_LABELS = {
 };
 
 /* ── theme ── */
+function setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem("fsv-theme", t); } catch (e) {}
+}
+const REDUCED = matchMedia("(prefers-reduced-motion:reduce)");
+/* First paint: set it. Afterwards: a circle of the new theme grows out of the toggle (View Transitions API);
+   browsers without it get a plain colour cross-fade. Either way nothing flashes or jumps. */
 function applyTheme(t) {
   const root = document.documentElement;
-  if (root.dataset.theme && root.dataset.theme !== t) {          // not on first paint
+  if (!root.dataset.theme || root.dataset.theme === t) { setTheme(t); return; }
+  if (REDUCED.matches) { setTheme(t); return; }
+  if (!document.startViewTransition) {
     root.classList.add("theming"); clearTimeout(applyTheme._t);
     applyTheme._t = setTimeout(() => root.classList.remove("theming"), 600);
+    setTheme(t); return;
   }
-  root.dataset.theme = t;
-  try { localStorage.setItem("fsv-theme", t); } catch (e) {}
+  const r = $("themeBtn").getBoundingClientRect();
+  const x = r.left + r.width / 2, y = r.top + r.height / 2;
+  const radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+  const vt = document.startViewTransition(() => setTheme(t));
+  vt.ready.then(() => root.animate(
+    { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+    { duration: 650, easing: "cubic-bezier(.22,.61,.36,1)", pseudoElement: "::view-transition-new(root)" }
+  )).catch(() => {});
 }
 $("themeBtn").onclick = () => applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
 (function () { let t = "dark"; try { t = localStorage.getItem("fsv-theme") || "dark"; } catch (e) {} applyTheme(t); })();
@@ -104,6 +120,20 @@ $("advToggle").onclick = () => {
   const p = $("advPanel"); p.classList.toggle("open");
   $("advToggle").classList.toggle("on", p.classList.contains("open"));
 };
+
+/* what the chosen profile actually does — "deep" in particular sends many more requests */
+const PROFILE_HINT = {
+  passive: "Read-only: no crafted payloads are sent (headers, TLS, DNS, cookies, scripts, exposure of files).",
+  balanced: "",
+  aggressive: "Same checks as Balanced at a higher request rate and concurrency.",
+  deep: "Thorough: crawls at least 300 URLs / depth 4, hunts for hidden parameters, probes ~90 more files, tries more payload shapes. Expect several times more requests — only for targets you own.",
+};
+function updateProfileHint() {
+  const h = $("profileHint"), t = PROFILE_HINT[$("profile").value] || "";
+  h.textContent = t; h.classList.toggle("show", !!t); h.dataset.profile = $("profile").value;
+}
+$("profile").addEventListener("change", updateProfileHint);
+updateProfileHint();
 
 /* reflect http/https prefix as the user types a scheme */
 $("target").addEventListener("input", () => {
@@ -839,4 +869,103 @@ loadHistory();
       g.style.setProperty("--my", (ev.clientY - r.top) + "px");
     });
   }, { passive: true });
+})();
+
+/* ── themed dropdowns ──
+   The browser's own <select> popup ignores the page theme (light grey list on a dark UI). Every .sel select is
+   kept as the source of truth — value, change events and ids are untouched — and gets a themed, keyboard-driven
+   listbox on top. The menu lives on <body> so the collapsing "Advanced" drawer can't clip it. */
+(function () {
+  let openMenu = null;
+  const closeAll = (refocus) => {
+    if (!openMenu) return;
+    const { menu, btn } = openMenu; openMenu = null;
+    btn.setAttribute("aria-expanded", "false");
+    menu.classList.remove("in"); menu.classList.add("out");
+    setTimeout(() => menu.remove(), 160);
+    if (refocus) btn.focus();
+  };
+  document.addEventListener("pointerdown", e => { if (openMenu && !openMenu.menu.contains(e.target) && !openMenu.btn.contains(e.target)) closeAll(); });
+  addEventListener("resize", () => closeAll());
+  addEventListener("scroll", e => { if (openMenu && !openMenu.menu.contains(e.target)) closeAll(); }, true);
+
+  function enhance(sel) {
+    if (sel._cs) return; sel._cs = true;
+    const wrap = sel.parentElement;
+    wrap.classList.add("cs");
+    sel.classList.add("cs-native"); sel.tabIndex = -1; sel.setAttribute("aria-hidden", "true");
+    const btn = document.createElement("button");
+    btn.type = "button"; btn.className = "cs-btn";
+    btn.setAttribute("aria-haspopup", "listbox"); btn.setAttribute("aria-expanded", "false");
+    btn.setAttribute("aria-label", sel.getAttribute("aria-label") || sel.title || sel.id || "Choose");
+    wrap.insertBefore(btn, sel);
+    const label = () => { const o = sel.selectedOptions[0]; btn.textContent = o ? o.textContent : ""; };
+    label();
+
+    function open(focusLast) {
+      closeAll();
+      const menu = document.createElement("div");
+      menu.className = "cs-menu glass"; menu.setAttribute("role", "listbox");
+      const opts = [];
+      const add = (o, host) => {
+        const el = document.createElement("div");
+        el.className = "cs-opt"; el.setAttribute("role", "option"); el.tabIndex = -1;
+        el.dataset.value = o.value; el.textContent = o.textContent;
+        el.setAttribute("aria-selected", o.selected ? "true" : "false");
+        if (o.selected) el.classList.add("sel");
+        el.onclick = () => choose(o.value);
+        host.appendChild(el); opts.push(el);
+      };
+      [...sel.children].forEach(ch => {
+        if (ch.tagName === "OPTGROUP") {
+          const g = document.createElement("div"); g.className = "cs-group"; g.textContent = ch.label; menu.appendChild(g);
+          [...ch.children].forEach(o => add(o, menu));
+        } else add(ch, menu);
+      });
+      document.body.appendChild(menu);
+      const r = btn.getBoundingClientRect();
+      menu.style.minWidth = Math.max(r.width, 150) + "px";
+      const below = innerHeight - r.bottom, h = Math.min(menu.scrollHeight, 300);
+      const up = below < h + 16 && r.top > below;
+      menu.style.left = Math.min(r.left, innerWidth - menu.offsetWidth - 8) + "px";
+      menu.style.top = (up ? Math.max(8, r.top - h - 6) : r.bottom + 6) + "px";
+      menu.style.maxHeight = Math.max(120, up ? r.top - 14 : below - 14, 0) + "px";
+      menu.style.transformOrigin = up ? "bottom" : "top";
+      requestAnimationFrame(() => menu.classList.add("in"));
+      btn.setAttribute("aria-expanded", "true");
+      openMenu = { menu, btn };
+      const cur = opts.find(o => o.classList.contains("sel")) || opts[0];
+      (focusLast ? opts[opts.length - 1] : cur).focus();
+      menu.scrollTop = Math.max(0, cur.offsetTop - 60);
+      menu.onkeydown = (e) => {
+        const i = opts.indexOf(document.activeElement);
+        const go = (n) => { e.preventDefault(); opts[(n + opts.length) % opts.length].focus(); };
+        if (e.key === "ArrowDown") go(i + 1);
+        else if (e.key === "ArrowUp") go(i - 1);
+        else if (e.key === "Home") go(0);
+        else if (e.key === "End") go(opts.length - 1);
+        else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (i >= 0) choose(opts[i].dataset.value); }
+        else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeAll(true); }
+        else if (e.key === "Tab") closeAll();
+        else if (e.key.length === 1) {                         // type-ahead
+          const k = e.key.toLowerCase(), n = opts.findIndex((o, j) => j > i && o.textContent.toLowerCase().startsWith(k));
+          const m = n >= 0 ? n : opts.findIndex(o => o.textContent.toLowerCase().startsWith(k));
+          if (m >= 0) opts[m].focus();
+        }
+      };
+    }
+    function choose(v) {
+      closeAll(true);
+      if (sel.value === v) return;
+      sel.value = v; label();
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    btn.onclick = () => (openMenu && openMenu.btn === btn) ? closeAll(true) : open(false);
+    btn.onkeydown = (e) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); open(e.key === "ArrowUp"); }
+    };
+    sel.addEventListener("change", label);
+    new MutationObserver(label).observe(sel, { childList: true, subtree: true });   // options rebuilt by app code
+  }
+  document.querySelectorAll(".sel > select").forEach(enhance);
 })();

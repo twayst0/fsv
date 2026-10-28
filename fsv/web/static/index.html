@@ -55,6 +55,7 @@
           <option value="passive">Passive — no payloads</option>
           <option value="balanced" selected>Balanced — safe active</option>
           <option value="aggressive">Aggressive — fast</option>
+          <option value="deep">Deep — thorough, slower</option>
         </select></div>
       </div>
       <label class="chk"><input type="checkbox" id="crawl" checked><span class="box"></span>Crawl site</label>
@@ -68,6 +69,8 @@
       </div>
       <button class="mini-btn ghost" id="advToggle" type="button">⚙ Advanced</button>
     </div>
+
+    <div class="profile-hint" id="profileHint" role="note"></div>
 
     <!-- advanced drawer -->
     <div class="adv" id="advPanel">
