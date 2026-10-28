@@ -33,7 +33,7 @@ import aiohttp
 
 from fsv.core import dnsutil
 from fsv.core.netsafety import (
-    host_of_url, is_blocked_address, is_ip_or_local, make_connector, make_trace_config,
+    host_of_url, is_blocked_address, make_connector, make_trace_config,
     registrable_domain,
 )
 

@@ -5,7 +5,7 @@ import asyncio
 import json
 import re
 from typing import Callable
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 
 from fsv.core.scanner import BaseScanner
 from fsv.core.models import Finding, Severity, Confidence
@@ -101,6 +101,9 @@ class PathScanner(BaseScanner):
         findings: list[Finding] = []
 
         paths_list = list(ALL_PATHS)
+        if self.deep:
+            paths_list += DEEP_PATHS + host_backup_paths(parsed.hostname or "")
+            paths_list = list(dict.fromkeys(paths_list))
         for i in range(0, len(paths_list), batch_size):
             batch   = paths_list[i: i + batch_size]
             tasks   = [self._probe(base_url, path, baseline) for path in batch]
@@ -287,9 +290,11 @@ def redact_preview(path: str, body: str, limit: int = 300) -> str:
     scan report itself never becomes a second copy of the leaked credentials.
     Binary / archive files get no preview at all.
     """
-    if path in ("/id_rsa", "/.ssh/id_rsa"):
+    if path in ("/id_rsa", "/.ssh/id_rsa") or "PRIVATE KEY-----" in body[:300]:
         return "-----BEGIN … PRIVATE KEY----- (contents withheld)"
-    if path in _BINARY_FILES:
+    if path in _WITHHOLD:
+        return f"(contents withheld: the file holds secrets that are not in key=value form; {len(body)} bytes received)"
+    if path in _BINARY_FILES or path in _BINARY_FILES_DYNAMIC:
         return f"(binary content withheld; {len(body)} bytes received)"
     preview = body[:limit]
     if path not in _SECRET_FILES:
@@ -417,3 +422,155 @@ for _path, _sev, _val, _desc, _cwe in _EXTRA_CHECKS:
     PATH_CWE[_path] = _cwe
 
 ALL_PATHS: list[str] = list(dict.fromkeys([*SENSITIVE_PATHS, *(c[0] for c in _EXTRA_CHECKS)]))
+
+
+# ── deep profile: a much longer list, every entry content-validated ───────────
+# (Not run by default: ~90 more requests per scan. `fsv scan --profile deep`.)
+
+_SQLITE = lambda b, c: b.startswith("SQLite format 3")
+_GZ_SQL = _GZIP
+_RAR = lambda b, c: b.startswith("Rar!")
+_7Z = lambda b, c: b.startswith("7z��")
+_SHELL_HIST = _regex(r"^(?:cd|ls|sudo|git|ssh|scp|mysql|psql|vim?|nano|cat|apt(?:-get)?|npm|pip3?|docker|curl|wget|chmod|export)\s", html_ok=False)
+_GCP_KEY = _json_with("private_key", "client_secret", "private_key_id")
+_KUBE = _regex(r"^\s*(apiVersion|clusters|contexts|current-context)\s*:")
+
+
+def _json_secretish(body: str, ctype: str) -> bool:
+    """A JSON config whose keys name secrets and whose values look like them (not 'password': '')."""
+    try:
+        data = json.loads(body)
+    except ValueError:
+        return False
+
+    def walk(o, depth=0):
+        if depth > 4:
+            return False
+        if isinstance(o, dict):
+            for k, v in o.items():
+                if re.search(r"(?i)pass(word|wd)?|secret|token|api[_-]?key|private[_-]?key|connection[_-]?string", str(k)) \
+                        and isinstance(v, str) and len(v) >= 6 and not re.search(r"(?i)^(x+|\*+|changeme|your[_-].*|<.*>|\$\{.*)$", v):
+                    return True
+                if walk(v, depth + 1):
+                    return True
+        elif isinstance(o, list):
+            return any(walk(i, depth + 1) for i in o[:20])
+        return False
+    return walk(data)
+
+
+_DEEP_CHECKS: list[tuple] = [
+    ("/.git/index", S.HIGH, lambda b, c: b.startswith("DIRC"), "Exposed git index: lists every file of the repository and confirms it can be downloaded object by object.", "CWE-538"),
+    ("/.git/logs/HEAD", S.HIGH, _regex(r"^[0-9a-f]{40} [0-9a-f]{40} "), "Exposed git reflog: commit ids, author names and e-mail addresses.", "CWE-538"),
+    ("/.hg/hgrc", S.MEDIUM, _regex(r"^\s*\[(paths|ui)\]"), "Exposed Mercurial configuration (repository paths, sometimes credentials).", "CWE-538"),
+    ("/.bzr/branch-format", S.MEDIUM, _regex(r"Bazaar"), "Exposed Bazaar repository metadata.", "CWE-538"),
+    ("/CVS/Entries", S.MEDIUM, _regex(r"^/[^/\n]+/\d"), "Exposed CVS metadata: file list of the repository.", "CWE-538"),
+    ("/.env.development", S.CRITICAL, _ENV, "Exposed development environment file: credentials and API keys.", "CWE-538"),
+    ("/.env.staging", S.CRITICAL, _ENV, "Exposed staging environment file: credentials and API keys.", "CWE-538"),
+    ("/.env.dev", S.CRITICAL, _ENV, "Exposed development environment file: credentials and API keys.", "CWE-538"),
+    ("/.env.test", S.HIGH, _ENV, "Exposed test environment file: often reuses real credentials.", "CWE-538"),
+    ("/.bash_history", S.HIGH, _SHELL_HIST, "Exposed shell history: commands, hostnames and often passwords typed on a command line.", "CWE-538"),
+    ("/.zsh_history", S.HIGH, _SHELL_HIST, "Exposed shell history: commands, hostnames and often passwords typed on a command line.", "CWE-538"),
+    ("/.mysql_history", S.HIGH, _regex(r"(?:select|insert|update|create|show|use)\s", html_ok=False), "Exposed MySQL client history: queries and sometimes credentials.", "CWE-538"),
+    ("/.viminfo", S.MEDIUM, _regex(r"^# This viminfo file"), "Exposed vim state: recently edited file paths and search strings.", "CWE-538"),
+    ("/.git-credentials", S.CRITICAL, _regex(r"^https?://[^:\s/]+:[^@\s]+@"), "Exposed git credential store: plaintext usernames and passwords/tokens.", "CWE-538"),
+    ("/.netrc", S.CRITICAL, _regex(r"^\s*(machine|default)\b"), "Exposed .netrc: plaintext logins for remote hosts.", "CWE-538"),
+    ("/.pgpass", S.CRITICAL, _regex(r"^[^:\s]+:\d+:[^:\s]+:[^:\s]+:\S+"), "Exposed PostgreSQL password file.", "CWE-538"),
+    ("/.my.cnf", S.HIGH, _regex(r"^\s*\[client\]|^\s*password\s*="), "Exposed MySQL client configuration with credentials.", "CWE-538"),
+    ("/.s3cfg", S.CRITICAL, _regex(r"^\s*(access_key|secret_key)\s*="), "Exposed s3cmd configuration: AWS access and secret keys.", "CWE-538"),
+    ("/.kube/config", S.CRITICAL, _KUBE, "Exposed kubeconfig: cluster endpoints and credentials.", "CWE-538"),
+    ("/kubeconfig", S.CRITICAL, _KUBE, "Exposed kubeconfig: cluster endpoints and credentials.", "CWE-538"),
+    ("/terraform.tfstate.backup", S.CRITICAL, _json_with("terraform_version", "resources"), "Exposed Terraform state backup: infrastructure inventory and secrets in clear text.", "CWE-538"),
+    ("/.vscode/sftp.json", S.CRITICAL, _regex(r'"(host|password|privateKeyPath)"'), "Exposed VS Code SFTP configuration: server host and credentials.", "CWE-538"),
+    ("/.vscode/settings.json", S.LOW, _regex(r'^\s*\{[\s\S]*"[\w.]+"\s*:'), "Exposed editor settings: local paths and tooling.", "CWE-200"),
+    ("/sftp-config.json", S.CRITICAL, _regex(r'"(host|password|user)"'), "Exposed Sublime SFTP configuration: server host and credentials.", "CWE-538"),
+    ("/db.sqlite", S.CRITICAL, _SQLITE, "Downloadable SQLite database.", "CWE-530"),
+    ("/db.sqlite3", S.CRITICAL, _SQLITE, "Downloadable SQLite database (Django default name): user table with password hashes.", "CWE-530"),
+    ("/database.sqlite", S.CRITICAL, _SQLITE, "Downloadable SQLite database.", "CWE-530"),
+    ("/data.db", S.HIGH, _SQLITE, "Downloadable SQLite database.", "CWE-530"),
+    ("/app.db", S.HIGH, _SQLITE, "Downloadable SQLite database.", "CWE-530"),
+    ("/database.sql", S.HIGH, _SQL, "Downloadable SQL dump.", "CWE-530"),
+    ("/dump.sql.gz", S.HIGH, _GZ_SQL, "Downloadable compressed SQL dump.", "CWE-530"),
+    ("/backup.sql.gz", S.HIGH, _GZ_SQL, "Downloadable compressed SQL dump.", "CWE-530"),
+    ("/server.key", S.CRITICAL, _PRIVKEY, "Exposed TLS private key.", "CWE-321"),
+    ("/private.key", S.CRITICAL, _PRIVKEY, "Exposed private key.", "CWE-321"),
+    ("/privkey.pem", S.CRITICAL, _PRIVKEY, "Exposed TLS private key (Let's Encrypt default name).", "CWE-321"),
+    ("/key.pem", S.CRITICAL, _PRIVKEY, "Exposed private key.", "CWE-321"),
+    ("/id_ed25519", S.CRITICAL, _PRIVKEY, "Exposed SSH private key.", "CWE-321"),
+    ("/id_ecdsa", S.CRITICAL, _PRIVKEY, "Exposed SSH private key.", "CWE-321"),
+    ("/config.json", S.HIGH, _json_secretish, "Exposed JSON configuration that holds secret-looking values.", "CWE-538"),
+    ("/secrets.json", S.CRITICAL, _json_secretish, "Exposed secrets file.", "CWE-538"),
+    ("/env.json", S.HIGH, _json_secretish, "Exposed environment JSON with secret-looking values.", "CWE-538"),
+    ("/local.settings.json", S.HIGH, _json_with("Values", "ConnectionStrings", "IsEncrypted"), "Exposed Azure Functions settings: storage and service connection strings.", "CWE-538"),
+    ("/credentials.json", S.CRITICAL, _GCP_KEY, "Exposed Google credentials file.", "CWE-538"),
+    ("/client_secrets.json", S.CRITICAL, _GCP_KEY, "Exposed OAuth client secrets.", "CWE-538"),
+    ("/service-account.json", S.CRITICAL, _GCP_KEY, "Exposed GCP service-account key.", "CWE-538"),
+    ("/.user.ini", S.MEDIUM, _regex(r"^\s*(auto_prepend_file|auto_append_file|display_errors|upload_max_filesize)\s*="), "Exposed PHP per-directory configuration.", "CWE-200"),
+    ("/php.ini", S.MEDIUM, _regex(r"^\s*\[PHP\]"), "Exposed PHP configuration.", "CWE-200"),
+    ("/web.config.bak", S.HIGH, _regex(r"<configuration[\s>]", html_ok=True), "Backup of web.config served as text: connection strings and machine keys.", "CWE-538"),
+    ("/.circleci/config.yml", S.LOW, _regex(r"^\s*version\s*:\s*[\d.]+", flags=re.MULTILINE), "Exposed CircleCI pipeline: deploy targets and secret variable names.", "CWE-200"),
+    ("/bitbucket-pipelines.yml", S.LOW, _regex(r"^\s*(pipelines|image)\s*:"), "Exposed Bitbucket pipeline: deploy targets and variable names.", "CWE-200"),
+    ("/azure-pipelines.yml", S.LOW, _regex(r"^\s*(trigger|pool|steps|stages)\s*:"), "Exposed Azure pipeline definition.", "CWE-200"),
+    ("/Vagrantfile", S.LOW, _regex(r"Vagrant\.configure"), "Exposed Vagrantfile: development environment details.", "CWE-200"),
+    ("/ansible.cfg", S.LOW, _regex(r"^\s*\[defaults\]"), "Exposed Ansible configuration.", "CWE-200"),
+    ("/requirements.txt", S.LOW, _regex(r"^[A-Za-z0-9_.\-]+\s*(==|>=|<=|~=)\s*\d", flags=re.MULTILINE), "Exposed Python dependency list: exact versions for targeting known CVEs.", "CWE-200"),
+    ("/Gemfile.lock", S.LOW, _regex(r"^(GEM|PLATFORMS|DEPENDENCIES)\s*$", flags=re.MULTILINE), "Exposed Ruby dependency lock file.", "CWE-200"),
+    ("/pom.xml", S.LOW, _regex(r"<project[\s>]", html_ok=True), "Exposed Maven project file: dependencies and internal repository URLs.", "CWE-200"),
+    ("/manager/html", S.HIGH, _regex(r"Tomcat Web Application Manager", html_ok=True), "Tomcat Manager is open without authentication: deploy a WAR = remote code execution.", "CWE-306"),
+    ("/jmx-console/", S.HIGH, _regex(r"JMX Agent View|JBoss", html_ok=True), "JBoss JMX console is reachable: remote code execution path.", "CWE-306"),
+    ("/solr/admin/", S.MEDIUM, _regex(r"Solr Admin", html_ok=True), "Solr admin interface is reachable.", "CWE-284"),
+    ("/_all_dbs", S.HIGH, lambda b, c: b.lstrip().startswith("[") and '"_users"' in b, "CouchDB answers without authentication: every database is listable.", "CWE-306"),
+    ("/_utils/", S.MEDIUM, _regex(r"Fauxton|CouchDB", html_ok=True), "CouchDB admin UI (Fauxton) is reachable.", "CWE-284"),
+    ("/_cat/indices", S.HIGH, _regex(r"^(green|yellow|red)\s+(open|close)\s", flags=re.MULTILINE), "Elasticsearch lists its indices without authentication.", "CWE-306"),
+    ("/_nodes", S.HIGH, _json_with("nodes", "cluster_name"), "Elasticsearch node information without authentication.", "CWE-306"),
+    ("/script", S.CRITICAL, _regex(r"Jenkins[\s\S]{0,4000}Script Console|Script Console[\s\S]{0,4000}Jenkins", html_ok=True), "Jenkins script console is open: arbitrary code execution.", "CWE-306"),
+    ("/jenkins/script", S.CRITICAL, _regex(r"Script Console", html_ok=True), "Jenkins script console is open: arbitrary code execution.", "CWE-306"),
+    ("/h2-console", S.CRITICAL, _regex(r"H2 Console", html_ok=True), "H2 database console is reachable: SQL and, via CREATE ALIAS, code execution.", "CWE-306"),
+    ("/druid/index.html", S.MEDIUM, _regex(r"Druid Stat Index", html_ok=True), "Alibaba Druid monitor is reachable: SQL statements and sessions.", "CWE-284"),
+    ("/jolokia/", S.HIGH, _json_with("agent", "request"), "Jolokia JMX-over-HTTP endpoint is reachable.", "CWE-306"),
+    ("/env", S.HIGH, _json_with("profiles", "systemProperties", "systemEnvironment"), "Spring Boot 1.x /env is public: environment variables including secrets.", "CWE-200"),
+    ("/__debug__/", S.MEDIUM, _regex(r"djdt|Django Debug Toolbar", html_ok=True), "Django Debug Toolbar is reachable.", "CWE-489"),
+    ("/rails/info/properties", S.HIGH, _regex(r"Rails version", html_ok=True), "Rails info pages are public (development mode in production).", "CWE-489"),
+    ("/rails/info/routes", S.MEDIUM, _regex(r"Routes", html_ok=True), "Rails routes page is public (development mode in production).", "CWE-489"),
+    ("/_ignition/health-check", S.HIGH, _json_with("can_execute_commands"), "Laravel Ignition is exposed: with can_execute_commands this is a remote-code-execution vector (CVE-2021-3129).", "CWE-489"),
+    ("/horizon", S.MEDIUM, _regex(r"Laravel Horizon", html_ok=True), "Laravel Horizon dashboard is reachable: queue payloads and job data.", "CWE-284"),
+    ("/mongo-express/", S.HIGH, _regex(r"Mongo Express", html_ok=True), "mongo-express admin UI is reachable.", "CWE-306"),
+]
+
+for _path, _sev, _val, _desc, _cwe in _DEEP_CHECKS:
+    PATH_SEVERITY[_path] = _sev
+    PATH_DESCRIPTIONS[_path] = _desc
+    VALIDATORS[_path] = _val
+    PATH_CWE[_path] = _cwe
+
+DEEP_PATHS: list[str] = [c[0] for c in _DEEP_CHECKS if c[0] not in ALL_PATHS]
+# secrets that a key=value masker cannot see (URLs with passwords, typed commands, connection strings, state files)
+_WITHHOLD = ("/.git-credentials", "/.netrc", "/.pgpass", "/.bash_history", "/.zsh_history", "/.mysql_history", "/local.settings.json",
+             "/terraform.tfstate", "/terraform.tfstate.backup", "/.kube/config", "/kubeconfig", "/secrets.json", "/credentials.json",
+             "/client_secrets.json", "/service-account.json")
+_BINARY_FILES = _BINARY_FILES + ("/db.sqlite", "/db.sqlite3", "/database.sqlite", "/data.db", "/app.db", "/dump.sql.gz", "/backup.sql.gz")
+_SECRET_FILES = _SECRET_FILES + tuple(c[0] for c in _DEEP_CHECKS if c[1] in (S.CRITICAL,) and c[0] not in _BINARY_FILES)
+
+
+def host_backup_paths(hostname: str) -> list[str]:
+    """`/<name>.zip` … for names derived from the host (www.example.com → example.com, example): where admins park a backup."""
+    host = (hostname or "").lower().removeprefix("www.")
+    if not host or re.fullmatch(r"[\d.:]+", host):
+        return []
+    names = [n for n in dict.fromkeys([host, host.split(".")[0]]) if len(n) >= 3]
+    out: list[str] = []
+    for n in names:
+        for ext, val, sev in ((".zip", _ZIP, S.HIGH), (".tar.gz", _GZIP, S.HIGH), (".sql", _SQL, S.HIGH), (".sql.gz", _GZ_SQL, S.HIGH),
+                              (".bak", _SQL, S.HIGH), (".7z", _7Z, S.HIGH), (".rar", _RAR, S.HIGH)):
+            path = f"/{n}{ext}"
+            PATH_SEVERITY[path] = sev
+            PATH_DESCRIPTIONS[path] = "Downloadable backup named after the site."
+            VALIDATORS[path] = val
+            PATH_CWE[path] = "CWE-530"
+            if ext != ".sql" and ext != ".bak" and path not in _BINARY_FILES:
+                _BINARY_FILES_DYNAMIC.add(path)
+            out.append(path)
+    return out
+
+
+_BINARY_FILES_DYNAMIC: set[str] = set()

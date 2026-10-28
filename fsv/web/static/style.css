@@ -90,7 +90,7 @@ header{display:flex;align-items:center;justify-content:space-between;
   display:grid;place-items:center;transition:.2s var(--ease);text-decoration:none;
   box-shadow:inset 0 1px 0 var(--glass-hi)}
 .icon-btn:hover{background:var(--glass-2);transform:translateY(-2px)}
-#themeBtn::before{content:"◐"}
+
 
 /* ── scan panel ── */
 .scan-panel{padding:24px}
@@ -157,11 +157,11 @@ select{height:38px;border-radius:10px;border:1px solid var(--stroke);appearance:
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* ── overview (gauge + stats) ── */
-.overview{display:none;grid-template-columns:260px 1fr;gap:16px;margin-top:18px}
+.overview{display:none;grid-template-columns:300px 1fr;gap:16px;margin-top:18px}
 .overview.show{display:grid}
 @media(max-width:720px){.overview{grid-template-columns:1fr}}
 .gauge-card{padding:22px;display:flex;align-items:center;gap:18px}
-.gauge{position:relative;width:118px;height:118px;flex-shrink:0}
+.gauge{position:relative;width:112px;height:112px;flex-shrink:0}
 .gauge svg{width:100%;height:100%;transform:rotate(-90deg)}
 .g-track{fill:none;stroke:rgba(255,255,255,.09);stroke-width:9}
 .g-fill{fill:none;stroke:#fff;stroke-width:9;stroke-linecap:round;
@@ -179,7 +179,7 @@ select{height:38px;border-radius:10px;border:1px solid var(--stroke);appearance:
 
 .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
 @media(max-width:720px){.stats{grid-template-columns:repeat(5,1fr);gap:8px}}
-.stat{padding:18px 16px;text-align:left;cursor:pointer;border:1px solid var(--stroke);
+.stat{padding:18px 16px 16px;gap:2px;text-align:left;cursor:pointer;border:1px solid var(--stroke);
   transition:.2s var(--ease);font-family:inherit;color:var(--text);
   display:flex;flex-direction:column;justify-content:center;min-height:118px}
 .stat:hover{transform:translateY(-3px);background:var(--glass-2)}
@@ -227,9 +227,12 @@ select{height:38px;border-radius:10px;border:1px solid var(--stroke);appearance:
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .f-arrow{color:var(--faint);transition:.25s var(--ease);flex-shrink:0;font-size:16px}
 .finding.open .f-arrow{transform:rotate(90deg)}
-.f-body{max-height:0;overflow:hidden;transition:max-height .35s var(--ease);border-top:1px solid transparent}
-.finding.open .f-body{max-height:1600px;border-top-color:var(--stroke-soft)}
-.f-inner{padding:17px 18px;font-size:13.5px}
+/* height: auto can't be transitioned, a 0fr → 1fr grid row can (no max-height guess, no clipped long findings) */
+.f-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows .4s var(--ease);border-top:1px solid transparent}
+.finding.open .f-body{grid-template-rows:1fr;border-top-color:var(--stroke-soft)}
+.f-inner{min-height:0;overflow:hidden;font-size:13.5px}
+.f-pad{padding:17px 18px;opacity:0;transform:translateY(-6px);transition:opacity .3s var(--ease),transform .35s var(--ease)}
+.finding.open .f-pad{opacity:1;transform:none;transition-delay:.08s}
 .f-inner h4{font-size:10.5px;text-transform:uppercase;letter-spacing:1.2px;color:var(--faint);
   margin:16px 0 7px;font-weight:600}
 .f-inner h4:first-of-type{margin-top:0}
@@ -412,8 +415,10 @@ footer b{color:var(--muted)}
 .owasp-id{font-family:var(--mono);font-size:12px;color:var(--high);font-weight:600}
 .owasp-name{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .owasp-bar{height:7px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden}
-.owasp-bar span{display:block;height:100%;border-radius:99px;
-  background:linear-gradient(90deg,var(--high),var(--crit));transition:width .7s var(--ease)}
+.owasp-bar span{display:block;height:100%;width:var(--w,0%);border-radius:99px;transform-origin:left;
+  background:linear-gradient(90deg,var(--high),var(--crit));animation:grow .9s var(--ease) both;
+  animation-delay:calc(var(--k,0) * 60ms)}
+@keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 .owasp-n{font-family:var(--mono);font-size:12px;text-align:right;color:var(--text)}
 @media(max-width:620px){.owasp-row{grid-template-columns:30px 1fr 60px 24px}}
 
@@ -465,7 +470,7 @@ footer b{color:var(--muted)}
 
 @media (prefers-reduced-motion:reduce){
   .owasp-card.show,.modal-back.show{animation:none!important}
-  .owasp-bar span,.adv{transition:none!important}
+  .adv{transition:none!important}
 }
 
 /* v1.2 — advanced auth fields, delta line, history delete, hidden scheme prefix */
@@ -518,3 +523,214 @@ footer b{color:var(--muted)}
 select optgroup{font-style:normal;color:var(--muted)}
 
 .empty .small{white-space:pre-wrap;max-width:720px;margin:0 auto;text-align:left;font-family:var(--mono);font-size:12px}
+
+/* ============================================================
+   v2.3 — motion polish, accessibility, new controls
+   ============================================================ */
+:root{--spring:cubic-bezier(.34,1.56,.64,1)}   /* overshoot: things land, they don't just stop */
+
+/* keyboard users get a visible ring; mouse users don't */
+:focus{outline:none}
+:focus-visible{outline:2px solid var(--low);outline-offset:2px;border-radius:8px}
+.chk input:focus-visible + .box,.mod input:focus-visible ~ .mod-name{outline:2px solid var(--low);outline-offset:2px}
+.f-head:focus-visible{outline-offset:-2px;border-radius:var(--radius)}
+.skip{position:absolute;left:12px;top:-60px;z-index:300;padding:10px 14px;border-radius:10px;
+  background:var(--text);color:var(--bg);font-size:13px;font-weight:600;text-decoration:none;transition:top .2s var(--ease)}
+.skip:focus{top:12px}
+
+/* theme button: the icon matches the destination and spins into place */
+#themeBtn svg{transition:transform .5s var(--spring),opacity .25s}
+#themeBtn .ico-sun{display:none}
+:root[data-theme="light"] #themeBtn .ico-sun{display:block}
+:root[data-theme="light"] #themeBtn .ico-moon{display:none}
+#themeBtn:hover svg{transform:rotate(22deg) scale(1.1)}
+/* cross-fade colours when switching theme instead of a hard flip */
+html.theming,html.theming *,html.theming *::before,html.theming *::after{
+  transition:background-color .45s var(--ease),color .45s var(--ease),border-color .45s var(--ease),box-shadow .45s var(--ease)!important}
+
+/* cursor spotlight — follows the pointer across any glass card */
+.glass::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;
+  background:radial-gradient(260px circle at var(--mx,50%) var(--my,0%),rgba(255,255,255,.09),transparent 65%);
+  transition:opacity .35s var(--ease)}
+.glass:hover::after{opacity:1}
+:root[data-theme="light"] .glass::after{background:radial-gradient(260px circle at var(--mx,50%) var(--my,0%),rgba(255,255,255,.7),transparent 65%)}
+
+/* primary button: springy press */
+.btn:active{transform:translateY(0) scale(.97);transition-duration:.08s}
+.btn.primary:hover{transition-timing-function:var(--spring)}
+.mini-btn,.chip-btn,.fchip{transition:transform .25s var(--spring),background .15s,border-color .15s,color .15s}
+.mini-btn:hover,.chip-btn:hover{transform:translateY(-1px)}
+
+/* progress: a stepper, a living dot, a bar that glows while it works */
+.steps-track{list-style:none;display:flex;gap:0;margin:0 0 16px;font-size:11.5px;color:var(--faint);font-family:var(--mono)}
+.steps-track li{flex:1;display:flex;align-items:center;gap:8px;position:relative;transition:color .3s}
+.steps-track li i{width:10px;height:10px;border-radius:50%;border:1.5px solid currentColor;flex-shrink:0;
+  transition:background .3s,box-shadow .3s,transform .4s var(--spring)}
+.steps-track li:not(:last-child)::after{content:"";flex:1;height:1px;margin:0 10px;
+  background:linear-gradient(90deg,currentColor,var(--stroke-soft));opacity:.5;transform-origin:left;transition:opacity .3s}
+.steps-track li.on{color:var(--text)}
+.steps-track li.on i{background:var(--text);transform:scale(1.25);animation:stepPulse 1.4s ease-out infinite}
+.steps-track li.ok{color:#30c48d}
+.steps-track li.ok i{background:#30c48d;border-color:#30c48d}
+.steps-track li.ok:not(:last-child)::after{opacity:1}
+@keyframes stepPulse{0%{box-shadow:0 0 0 0 rgba(255,255,255,.45)}100%{box-shadow:0 0 0 9px rgba(255,255,255,0)}}
+.pbar-phase{display:inline-flex;align-items:center;gap:9px}
+.pulse{width:7px;height:7px;border-radius:50%;background:var(--low);box-shadow:0 0 0 0 rgba(99,168,255,.6);animation:ping 1.6s ease-out infinite}
+.progress-card[data-phase=done] .pulse,.progress-card[data-phase=error] .pulse,.progress-card[data-phase=cancelled] .pulse{animation:none;background:#30c48d}
+.progress-card[data-phase=error] .pulse{background:var(--crit)}
+@keyframes ping{0%{box-shadow:0 0 0 0 rgba(99,168,255,.55)}100%{box-shadow:0 0 0 10px rgba(99,168,255,0)}}
+.pbar{box-shadow:inset 0 1px 2px rgba(0,0,0,.3)}
+.pbar-fill{box-shadow:0 0 14px rgba(255,255,255,.35)}
+.pbar-fill::before{content:"";position:absolute;inset:0;opacity:.35;
+  background:repeating-linear-gradient(115deg,rgba(0,0,0,.18) 0 8px,transparent 8px 16px);animation:stripes 1s linear infinite}
+@keyframes stripes{to{background-position:16px 0}}
+.progress-card[data-phase=done] .pbar-fill::before,.progress-card[data-phase=done] .pbar-fill::after{animation:none;opacity:0}
+.progress-card.show{animation:rise .4s var(--ease) both}
+.pbar-pct{font-variant-numeric:tabular-nums}
+
+/* overview: grade lands with a spring, share bars fill under each severity count */
+.grade.pop{animation:gradePop .7s var(--spring) both}
+@keyframes gradePop{0%{opacity:0;transform:scale(.4) rotate(-12deg)}100%{opacity:1;transform:none}}
+.gauge::after{content:"";position:absolute;inset:-6px;border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle,transparent 62%,var(--gc,transparent) 100%);opacity:.14;filter:blur(8px)}
+.stat .n{font-variant-numeric:tabular-nums}
+.share{display:block;height:3px;border-radius:99px;background:rgba(255,255,255,.08);margin-top:12px;overflow:hidden}
+:root[data-theme="light"] .share{background:rgba(10,10,20,.08)}
+.share i{display:block;height:100%;width:0;border-radius:inherit;background:currentColor;transition:width .9s var(--ease) .25s}
+.stat:hover{transition-timing-function:var(--spring)}
+.stat.active{box-shadow:0 0 0 1px currentColor,0 10px 36px rgba(0,0,0,.34)}
+
+/* findings: select box, picked state, springy chevron */
+.f-pick{display:flex;align-items:center;flex-shrink:0;cursor:pointer}
+.f-pick input{position:absolute;opacity:0;width:0}
+.f-pick .box{width:17px;height:17px;border-radius:5px;border:1px solid var(--stroke);background:rgba(0,0,0,.22);
+  position:relative;transition:.15s var(--ease);opacity:.55}
+.f-head:hover .f-pick .box,.finding.picked .f-pick .box,.f-pick input:focus-visible + .box{opacity:1}
+.f-pick input:checked + .box{background:var(--low);border-color:var(--low);transform:scale(1.08)}
+.f-pick input:checked + .box::after{content:"✓";position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-size:10px;font-weight:800}
+.finding.picked{border-color:var(--low)}
+.f-arrow{transition:transform .35s var(--spring)}
+.finding{transition:border-color .2s,transform .25s var(--ease)}
+button.triage{border:0;background:transparent;font-family:inherit}
+.triage-menu{animation:menuIn .22s var(--spring) both;transform-origin:top right}
+@keyframes menuIn{from{opacity:0;transform:translateY(-6px) scale(.94)}to{opacity:1;transform:none}}
+.triage-menu button:focus-visible{background:var(--glass-2);outline-offset:-2px}
+
+/* bulk bar: slides in from below the filters */
+.bulk-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 14px;margin-bottom:12px;
+  border-radius:14px;border-color:rgba(99,168,255,.4);animation:rise .3s var(--spring) both}
+.bulk-bar b{font-size:12.5px;font-family:var(--mono);color:var(--low)}
+.bulk-acts{display:flex;gap:6px;flex-wrap:wrap;flex:1}
+
+/* dialogs */
+.modal-back{transition:opacity .2s}
+.modal-back.show .modal{animation:modalIn .35s var(--spring) both}
+@keyframes modalIn{from{opacity:0;transform:translateY(18px) scale(.95)}to{opacity:1;transform:none}}
+.modal-sm{max-width:440px;margin-top:12vh}
+.modal-acts{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+.adv-field textarea:focus-visible{outline:none;border-color:var(--low);box-shadow:0 0 0 3px rgba(99,168,255,.18)}
+
+/* toasts: a timer bar shows how long they stay */
+.toast{position:relative;overflow:hidden}
+.toast::after{content:"";position:absolute;left:0;bottom:0;height:2px;width:100%;background:currentColor;opacity:.3;
+  transform-origin:left;animation:toastTimer 4.2s linear forwards}
+@keyframes toastTimer{to{transform:scaleX(0)}}
+.toast .tdot{animation:ping 1.8s ease-out 2}
+
+/* history rows tilt in; empty state breathes */
+.empty-mark{animation:float 4s ease-in-out infinite}
+@keyframes float{50%{transform:translateY(-6px)}}
+.hist-item:hover{transition-timing-function:var(--spring)}
+
+@media(max-width:720px){.stats{grid-template-columns:repeat(5,minmax(0,1fr))}.stat{padding:14px 10px 12px}.stat .l{letter-spacing:.3px;font-size:9.5px}}
+@media(max-width:620px){
+  .steps-track li{font-size:10.5px;gap:5px}.steps-track li:not(:last-child)::after{margin:0 5px}
+  .f-meta{display:none}.sect-title .acts{flex-wrap:wrap;width:100%}.search input{width:100%}.search{flex:1}
+}
+
+/* motion off: honour it everywhere the new rules above added movement */
+@media (prefers-reduced-motion:reduce){
+  .pulse,.steps-track li.on i,.pbar-fill::before,.empty-mark,.toast::after,.toast .tdot,.grade.pop,.owasp-bar span,
+  .bulk-bar,.triage-menu,.modal-back.show .modal,.progress-card.show{animation:none!important}
+  .f-pad{transition:none!important;opacity:1;transform:none}
+  .share i{transition:none!important}
+  .glass::after{display:none}
+}
+
+/* light theme: a ticked box must stay visibly ticked (the generic light-theme box background out-ranked the checked rule) */
+:root[data-theme="light"] .chk input:checked + .box{background:var(--text);border-color:var(--text)}
+:root[data-theme="light"] .f-pick .box,:root[data-theme="light"] .hist-pick .box{background:rgba(255,255,255,.7)}
+:root[data-theme="light"] .f-pick input:checked + .box,:root[data-theme="light"] .hist-pick input:checked + .box{background:var(--low)}
+:root[data-theme="light"] .logo img{filter:brightness(.42) contrast(1.35)}
+
+/* overview: wider gauge column so "vs previous…" and the trend line fit; bigger numbers on the severity cards */
+.overview{grid-template-columns:340px 1fr}
+@media(max-width:900px){.overview{grid-template-columns:1fr}}
+.gauge-meta{overflow:hidden;flex:1}
+.spark svg{max-width:100%}
+.delta{line-height:1.7}
+.stat .n{font-size:38px;letter-spacing:-1.5px}
+.stat .l{font-size:11px;margin-top:9px}
+.stat{align-items:flex-start}
+.stat .share{align-self:stretch}
+@media(max-width:480px){
+  .brand-txt .sub{display:none}
+  header{flex-wrap:nowrap}
+  .scan-row .btn{flex:1}
+}
+
+/* ── v2.3.1: spinner no longer overlaps the label, themed dropdowns, circular theme reveal ── */
+.btn.primary{min-width:148px}
+.btn.primary.loading{padding-right:50px}
+.btn.primary.loading span{opacity:.75}
+.btn.primary.loading::before{right:18px}
+
+:root[data-theme="dark"]{color-scheme:dark}
+:root[data-theme="light"]{color-scheme:light}
+
+.cs-native{position:absolute!important;inset:0;width:100%;height:100%;opacity:0;pointer-events:none}
+.cs-btn{height:38px;min-width:64px;border-radius:10px;border:1px solid var(--stroke);width:100%;text-align:left;
+  background:rgba(0,0,0,.22);color:var(--text);padding:0 28px 0 12px;font-size:12.5px;font-family:inherit;cursor:pointer;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:border-color .15s,background .15s,box-shadow .15s}
+:root[data-theme="light"] .cs-btn{background:rgba(255,255,255,.55)}
+.sel.sm .cs-btn{height:34px;font-size:12px;padding:0 26px 0 11px}
+.cs-btn:hover{background:var(--glass-2)}
+.cs-btn[aria-expanded=true]{border-color:var(--low);box-shadow:0 0 0 3px rgba(99,168,255,.16)}
+.sel.cs::after{transition:transform .25s var(--spring)}
+.sel.cs:has(.cs-btn[aria-expanded=true])::after{transform:translateY(-50%) rotate(180deg)}
+
+.cs-menu{position:fixed;z-index:400;padding:6px;border-radius:13px;overflow-y:auto;overscroll-behavior:contain;
+  opacity:0;transform:translateY(-6px) scale(.96);pointer-events:none;
+  background:var(--glass-2);box-shadow:0 18px 50px rgba(0,0,0,.5),inset 0 1px 0 var(--glass-hi);
+  backdrop-filter:blur(var(--blur-strong)) saturate(1.3);-webkit-backdrop-filter:blur(var(--blur-strong)) saturate(1.3);
+  transition:opacity .16s var(--ease),transform .22s var(--spring)}
+.cs-menu.in{opacity:1;transform:none;pointer-events:auto}
+.cs-menu.out{opacity:0;transform:translateY(-4px) scale(.97)}
+:root[data-theme="light"] .cs-menu{background:rgba(255,255,255,.92);box-shadow:0 18px 50px rgba(20,20,40,.22),inset 0 1px 0 #fff}
+.cs-group{font-size:10px;text-transform:uppercase;letter-spacing:1.1px;color:var(--faint);padding:9px 10px 4px;font-weight:600}
+.cs-opt{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;font-size:12.5px;color:var(--text);cursor:pointer;outline:none;
+  transition:background .12s}
+.cs-opt:hover,.cs-opt:focus{background:var(--glass-hi)}
+:root[data-theme="light"] .cs-opt:hover,:root[data-theme="light"] .cs-opt:focus{background:rgba(10,10,20,.07)}
+.cs-opt.sel{font-weight:600}
+.cs-opt.sel::after{content:"✓";margin-left:auto;color:var(--low);font-size:11px}
+.cs-opt:focus-visible{outline:2px solid var(--low);outline-offset:-2px}
+
+/* circular theme reveal (View Transitions): the new theme grows out of the toggle button */
+::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
+::view-transition-old(root){z-index:1}
+::view-transition-new(root){z-index:2}
+@media (prefers-reduced-motion:reduce){
+  .cs-menu{transition:none}.sel.cs::after{transition:none}
+}
+.cs-opt{white-space:nowrap}
+.cs-opt.sel::after{margin-left:auto;padding-left:16px}
+:root[data-theme="light"] .btn.primary.loading::before{border-color:rgba(10,10,20,.18);border-top-color:#121217}
+:root[data-theme="light"] .btn.primary.loading span{opacity:.85}
+:root[data-theme="light"] .btn.danger{color:#c4283f;background:rgba(255,84,104,.12)}
+
+/* profile hint under the options row */
+.profile-hint{display:none;margin-top:12px;padding:9px 13px;border-radius:11px;font-size:12px;line-height:1.5;color:var(--muted);
+  background:var(--glass);border:1px solid var(--stroke-soft)}
+.profile-hint.show{display:block;animation:rise .3s var(--ease) both}
+.profile-hint[data-profile=deep]{color:var(--text);border-color:rgba(255,154,66,.4);background:rgba(255,154,66,.08)}

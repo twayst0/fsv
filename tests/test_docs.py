@@ -1,9 +1,7 @@
 """Documentation that can't rot: examples in the docs are executed."""
-import asyncio
 import os
 import re
 
-import pytest
 
 from fsv.core import registry
 from fsv.core.models import ScanConfig

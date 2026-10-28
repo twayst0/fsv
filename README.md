@@ -5,10 +5,10 @@
 <p align="center">
   <a href="https://github.com/twayst0/fsv/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/twayst0/fsv/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-111111?style=flat-square&logo=python&logoColor=white&labelColor=000000">
-  <img alt="32 modules" src="https://img.shields.io/badge/modules-32-e5e5e5?style=flat-square&labelColor=000000">
+  <img alt="38 modules" src="https://img.shields.io/badge/modules-38-e5e5e5?style=flat-square&labelColor=000000">
   <img alt="MCP server" src="https://img.shields.io/badge/MCP-ready-e5e5e5?style=flat-square&labelColor=000000">
   <img alt="detection only" src="https://img.shields.io/badge/mode-detection--only-9a9aa3?style=flat-square&labelColor=000000">
-  <img alt="tests" src="https://img.shields.io/badge/tests-360%2B-9a9aa3?style=flat-square&labelColor=000000">
+  <img alt="tests" src="https://img.shields.io/badge/tests-500%2B-9a9aa3?style=flat-square&labelColor=000000">
   <img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-5f5f68?style=flat-square&labelColor=000000">
 </p>
 
@@ -133,13 +133,14 @@ Real compromises are rarely one bug — they're two or three "medium" problems t
   <img src="docs/assets/findings.webp" alt="The OWASP Top 10 breakdown and the findings list with the Stripe key finding expanded: description, masked evidence, remediation and references." width="92%">
 </p>
 
-Liquid-glass UI with live progress (survives a page reload), the attack-path panel, OWASP breakdown, per-host risk trend, inline triage, module picker, scan comparison, and one-click export — reports **or paste-ready fixes**.
+Liquid-glass UI with a live stepper (survives a page reload), the attack-path panel, OWASP breakdown, per-host risk trend, sort / module filters, **bulk triage**, one-click **re-scan**, keyboard navigation, scan comparison, and one-click export — reports **or paste-ready fixes**. Light and dark themes; no third-party requests.
 
 ## Features
 
 - **Finds the pages first** — besides links: robots.txt, sitemaps, routes leaked by debug pages, and API paths quoted in your JavaScript; action-like paths are never requested. `--seed` for anything else.
 - **A badge for your README** — `fsv badge <scan_id>` writes a dated grade badge (`FSV security | A · 2026-10-25`); regenerate it from CI.
 - **Fix packs** — turn findings into **nginx / Apache / Caddy / Express / DNS** configuration (`fsv fixes <scan> nginx`). Only what was actually found; CSP is emitted report-only.
+- **Notifications** — `--notify <webhook>` (or `FSV_WEBHOOK_URL`) posts the grade and the worst findings to Slack, Discord or your own endpoint. Evidence is never included.
 - **CI-ready** — `fsv.toml`, **baselines** (gate only on *new* findings), `--fail-on`, SARIF for GitHub code scanning, and a ready-made **GitHub Action**.
 - **Triage that sticks** — false positive / accepted risk / fixed / confirmed, stored per host by stable fingerprint, re-applied to later scans, excluded from the score. Diff any two scans; per-host trend.
 - **Evidence over guesses** — exposure checks validate *content* (a `.git/HEAD` must look like one; an SPA that answers 200 to everything produces nothing). Every finding has a **confidence**, a CWE, an OWASP Top 10 (2021) category, impact and remediation.
@@ -166,6 +167,7 @@ Requires **Python 3.11+**. Docker: see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) 
 ```bash
 fsv scan example.com --authorize                       # full scan of a site you own
 fsv scan example.com --authorize --profile passive     # read-only: no payloads sent
+fsv scan example.com --authorize --profile deep        # thorough: hidden parameters, ~90 more files, more payload shapes (slower)
 fsv web                                                # dashboard → http://127.0.0.1:7474
 ```
 
@@ -219,7 +221,7 @@ fsv scan staging.example.com --authorize                                        
 
 ```yaml
 # .github/workflows/security.yml
-- uses: twayst0/fsv@v2.1.0          # pin a release tag (or a commit SHA)
+- uses: twayst0/fsv@v2.3.0          # pin a release tag (or a commit SHA)
   with:
     target: https://staging.example.com
     authorized: "true"          # you confirm you may test this target
@@ -240,15 +242,14 @@ application, where typical DAST scans don't go, and the two work well side by si
 | Buckets your pages load from that no longer exist | out of scope | `cloud_storage` |
 | Scripts from compromised CDNs (polyfill.io 2024) or expired domains | out of scope | `supply_chain` |
 | Email spoofing: SPF lookup limit, dead includes, DMARC, DKIM key size | out of scope | `dns_security` |
-| Debug mode visible only on error pages (Django, Werkzeug, Ignition…) | partly | `supply_chain` | scripts/styles from compromised or abandoned CDNs (polyfill.io, bootcdn, staticfile, rawgit) or from domains that are no longer registered | passive · url · ↗ |
-| `debug_mode` |
+| Debug mode visible only on error pages (Django, Werkzeug, Ignition…) | partly | `debug_mode` |
 | Several medium findings that add up to account takeover | listed separately | `correlation` attack paths |
 | Fixes as server config, triage that persists, CI baselines, MCP | — | built in |
 | Deep input fuzzing, authenticated spidering, scripted auth, JS-rendered apps | **yes** | basic |
 
-## Modules (32)
+## Modules (38)
 
-FSV ships **32 modules** — 26 passive, 6 active. Run `fsv modules` for the live list.
+FSV ships **38 modules** — 32 passive, 6 active. Run `fsv modules` for the live list.
 
 <details>
 <summary><b>The full catalogue</b> &nbsp;<sub>(or run <code>fsv modules</code>)</sub></summary>
@@ -262,16 +263,22 @@ FSV ships **32 modules** — 26 passive, 6 active. Run `fsv modules` for the liv
 | `js_libs` | known-vulnerable & end-of-life JavaScript libraries | passive · url |
 | `supply_chain` | scripts/styles from compromised or abandoned CDNs (polyfill.io, bootcdn, staticfile, rawgit) or from domains that are no longer registered | passive · url · ↗ |
 | `debug_mode` | framework debug mode in production (Django `DEBUG=True`, Werkzeug console, Rails, Laravel Ignition, Symfony, Express, ASP.NET) — seen on error pages a crawler never visits | passive · site |
-| `paths` | ~100 exposed files/endpoints, each content-validated (`.git`, `.env`, actuator, pprof, tfstate, backups…) | passive · site |
+| `paths` | ~100 exposed files/endpoints, each content-validated (`.git`, `.env`, actuator, pprof, tfstate, backups…); **deep: ~90 more** + backups named after the host | passive · site |
+| `html_leaks` | secrets / internal hosts in HTML comments, pre-filled password fields, trust-bearing hidden fields (role, price, is_admin) | passive · url |
+| `dom_sinks` | **DOM XSS** (URL → innerHTML/eval/redirect), `postMessage` without origin check — static analysis of first-party JS | passive · url |
+| `well_known` | OIDC/OAuth discovery (http endpoints, `alg=none`, implicit/password grants, no PKCE) and **private/symmetric keys published in JWKS** | passive · site |
+| `api_docs` | reads exposed OpenAPI (unauthenticated & sensitive routes, HTTP servers, secrets); Swagger UI, GraphiQL, Playground | passive · site |
+| `https_redirect` | does port 80 serve content / hop through another host over HTTP / never reach HTTPS; HSTS without `includeSubDomains` | passive · site |
+| `robots_review` | sensitive `Disallow` entries, (deep) whether they answer, staging hosts in the sitemap | passive · site |
 | `tech` | stack fingerprint + **end-of-life** software from a dated table | passive · site |
 | `headers` · `csp_analyzer` | security headers · deep CSP review | passive |
-| `ssl` | HTTPS, certificate validity, weak protocols/ciphers | passive · site |
+| `ssl` | certificate trust classified from OpenSSL (expired · self-signed · incomplete chain · hostname mismatch), key size, SHA-1, and **TLS 1.0/1.1 the server really accepts** | passive · site |
 | `cookies` | Secure / HttpOnly / SameSite / parent-domain scope | passive |
 | `sri` · `mixed_content` · `clickjacking` · `form_security` · `csrf` | page-level hygiene | passive |
 | `info_disclosure` · `dir_listing` · `http_methods` · `security_txt` · `waf_detect` · `graphql_introspection` · `jwt_analysis` · `subdomain` | exposure & recon | passive |
-| `xss` · `sqli` · `ssti` · `open_redirect` · `cors` · `host_header_injection` | reflected/error-based/marker checks (benign payloads) | **active** |
+| `xss` · `sqli` · `ssti` · `open_redirect` · `cors` · `host_header_injection` | reflected/error-based/marker checks (benign payloads). XSS is **context-aware** (HTML text, attribute, JS string); SQLi reports only errors the injection *caused* | **active** |
 
-↗ contacts hosts other than the target (skip with `--no-external`). `passive` = sends no crafted payloads. **Profiles:** `passive` (only passive modules), `balanced` (default), `aggressive` (higher rate/concurrency).
+↗ contacts hosts other than the target (skip with `--no-external`). `passive` = sends no crafted payloads. **Profiles:** `passive` (only passive modules), `balanced` (default), `aggressive` (higher rate/concurrency), `deep` (widest crawl, hidden-parameter discovery, larger exposed-file list, more payload shapes — slower).
 </details>
 
 ## How it works
@@ -295,6 +302,7 @@ One engine, four front doors. Address policy and proof of control live in the en
 | `FSV_REQUIRE_VERIFICATION` | off | payload-sending scans only against hosts whose owner proved control |
 | `FSV_MAX_SCANS` | `3` | concurrent scans |
 | `FSV_DISABLED_MODULES` | — | comma-separated module names to turn off |
+| `FSV_WEBHOOK_URL` / `FSV_WEBHOOK_MIN_SEVERITY` | — / `high` | POST a short summary (Slack/Discord-compatible) when a scan finds issues at or above that severity; same as `--notify URL` |
 | `FSV_PLUGIN_DIR` / `FSV_NO_PLUGINS` | `~/.fsv/plugins` / off | plugin discovery |
 | `FSV_ADVISORY_FILE` / `FSV_EOL_FILE` | — | your own JS-library advisories / end-of-life dates (JSON) |
 </details>

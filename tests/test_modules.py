@@ -1,7 +1,6 @@
 """Unit tests for individual scan-module logic that needs no network."""
 import pytest
 from fsv.core.models import ScanConfig
-from fsv.core.scanner import BaseScanner
 from fsv.modules.csp_analyzer import parse_csp, CSPAnalyzerScanner
 from fsv.modules.cookie_analyzer import _SENSITIVE_NAME
 
@@ -115,7 +114,7 @@ def test_mask_secret():
 
 # ── every content-validated path accepts its real file and rejects a catch-all page ──
 
-from fsv.modules.path_scanner import ALL_PATHS, _EXTRA_CHECKS
+from fsv.modules.path_scanner import _EXTRA_CHECKS
 
 REAL = {
     "/.git/config": "[core]\n\trepositoryformatversion = 0\n[remote \"origin\"]\n\turl = x",

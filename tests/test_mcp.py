@@ -1,7 +1,6 @@
 """MCP tools are plain async functions — call them against a seeded database."""
 import json
 
-import pytest
 
 from fsv.core import database as db
 from fsv.core.correlate import correlate
@@ -41,7 +40,6 @@ async def test_fix_and_report_tools_and_attack_paths():
     assert (await m.fsv_get_report("mcp-scan-1", "fix-nginx")).startswith("# FSV fix pack")
     assert "unknown report format" in await m.fsv_get_report("mcp-scan-1", "pdf")
 
-    from fsv.core.models import ScanResult as _SR
     res = await db.get_scan("mcp-scan-1")
     payload = m._findings_payload(res)
     assert [p["title"] for p in payload["attack_paths"]] == ["Attack Path: XSS → Session Hijack (cookie readable by script)"]

@@ -8,6 +8,12 @@ from fsv.core.models import Finding, ScanConfig
 from fsv.core.http_client import HTTPClient, Response
 
 
+# Bumped only when the module contract changes incompatibly (name/category/scope/description/scan()).
+# A plugin may pin the version it was written for with a class attribute `fsv_api = 1`; FSV then refuses it
+# with a clear message instead of letting it fail in odd ways after an upgrade. No attribute = no promise.
+PLUGIN_API_VERSION = 1
+
+
 class BaseScanner(ABC):
     """
     Abstract base for all FSV scan modules.
@@ -32,6 +38,11 @@ class BaseScanner(ABC):
     def __init__(self, http: HTTPClient, scan_config: ScanConfig) -> None:
         self.http = http
         self.scan_config = scan_config
+
+    @property
+    def deep(self) -> bool:
+        """True under the `deep` profile: a module may then widen its own search (more paths, parameters, payload shapes)."""
+        return self.scan_config.deep
 
     @abstractmethod
     async def scan(self, url: str) -> list[Finding]:

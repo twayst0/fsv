@@ -49,9 +49,10 @@ hands you the fixes.
   <img src="https://raw.githubusercontent.com/twayst0/fsv/main/docs/assets/detections.svg" alt="Detection cards: dangling DNS, orphaned bucket, dead SPF include, source map and secrets, end-of-life software, attack path, compromised CDN, debug mode" width="100%">
 </p>
 
-32 modules — DNS takeover, cloud storage, script supply chain, SPF/DMARC/DKIM, JavaScript secrets and
-source maps, vulnerable and end-of-life libraries, ~100 content-validated exposure checks, framework debug
-pages, headers/CSP/cookies, and benign active checks for common reflected issues. Findings carry severity,
+38 modules — DNS takeover, cloud storage, script supply chain, SPF/DMARC/DKIM, TLS (certificate trust, key strength, legacy protocols),
+JavaScript secrets and source maps, DOM-XSS static analysis, OIDC/JWKS/OpenAPI exposure, vulnerable and end-of-life libraries,
+~100 content-validated exposure checks (~190 with `--profile deep`), framework debug pages, headers/CSP/cookies, and benign
+context-aware active checks for common reflected issues. Findings carry severity,
 confidence, CWE, OWASP Top 10 category and remediation; reports in Markdown, JSON, HTML, SARIF and CSV.
 
 ## Links
