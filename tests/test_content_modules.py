@@ -1,13 +1,11 @@
 import json
-import pytest
 
-from fsv.core import dnsutil
 from fsv.core.content import find_bucket_refs, script_refs, same_site
 from fsv.core.models import ScanConfig
 from fsv.core.secrets import find_secrets, shannon_entropy
 from fsv.modules.cloud_storage import CloudStorageScanner
 from fsv.modules.js_analysis import JSAnalysisScanner, _is_internal_host
-from fsv.modules.js_libs import JSLibsScanner, parse_version, assess, detect_libraries
+from fsv.modules.js_libs import JSLibsScanner, parse_version, assess
 from helpers import FakeDNS, FakeHTTP
 
 PAGE = "https://www.example.com/"

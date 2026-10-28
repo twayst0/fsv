@@ -218,3 +218,8 @@ TECH_SIGNATURES = {
 # Shared-service safeguard: scans that send payloads (non-passive) are refused for public
 # hosts unless the owner has proven control (DNS TXT or /.well-known file). See core/ownership.py.
 REQUIRE_VERIFICATION = os.getenv("FSV_REQUIRE_VERIFICATION", "").lower() in ("1", "true", "yes")
+
+# Webhook notification (fsv.core.notify). The variables are read when a scan finishes, not at import,
+# so `fsv scan --notify URL` and tests can set them; the names live here with the other settings.
+WEBHOOK_URL_ENV = "FSV_WEBHOOK_URL"                    # where to POST a summary
+WEBHOOK_MIN_SEVERITY_ENV = "FSV_WEBHOOK_MIN_SEVERITY"  # default "high"

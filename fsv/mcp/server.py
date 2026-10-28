@@ -17,7 +17,6 @@ import json
 
 from mcp.server.mcpserver import MCPServer
 
-from fsv import __version__
 from fsv.core.models import ScanConfig, ScanProfile, FindingStatus, normalize_target
 from fsv.core import engine, database as db, registry, fixes as fixes_mod
 from fsv.core import report as report_mod

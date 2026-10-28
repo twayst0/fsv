@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import sys
 
 import click
@@ -14,7 +15,7 @@ from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeEl
 from rich import box
 
 from fsv import __version__, BANNER
-from fsv.config import MODULES_ENABLED
+from fsv.config import MODULES_ENABLED, WEBHOOK_URL_ENV
 from fsv.core.models import ScanConfig, ScanProfile, FindingStatus, normalize_target
 from fsv.core import engine, database as db, registry
 from fsv.core import report as report_mod
@@ -76,6 +77,9 @@ _ORDER = ["info", "low", "medium", "high", "critical"]
                    "Sends the domain name to a third party.")
 @click.option("--no-external", is_flag=True,
               help="Skip modules that contact hosts other than the target (takeover, cloud storage).")
+@click.option("--notify", "notify_url", default="", metavar="URL",
+              help="POST a summary to this webhook (Slack/Discord/own endpoint) if the scan finds high+ issues. "
+                   "Same as FSV_WEBHOOK_URL; severity floor via FSV_WEBHOOK_MIN_SEVERITY.")
 @click.option("--baseline", "baseline_path", default=None, type=click.Path(dir_okay=False),
               help="Known-findings file; only NEW findings count for --fail-on.")
 @click.option("--write-baseline", default=None, type=click.Path(dir_okay=False),
@@ -88,7 +92,7 @@ _ORDER = ["info", "low", "medium", "high", "critical"]
 @click.pass_context
 def scan(ctx, target, authorize, config_path, profile, no_crawl, max_urls, depth, threads, timeout, rate,
          modules, exclude, seeds, proxy, headers, cookies, tags, robots, max_time, ct_logs, no_external,
-         baseline_path, write_baseline, output, fail_on, quiet, verbose):
+         notify_url, baseline_path, write_baseline, output, fail_on, quiet, verbose):
     """Run a vulnerability scan against TARGET."""
     # -v turns on FSV's own debug logging only — never the DEBUG firehose of third-party libraries
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s", stream=sys.stderr)
@@ -107,7 +111,6 @@ def scan(ctx, target, authorize, config_path, profile, no_crawl, max_urls, depth
     except ValueError as exc:
         console.print(f"[red]Invalid target:[/] {exc}")
         sys.exit(2)
-
     # settings file: applies only to options the user did NOT pass explicitly
     cfg_file = config_path or settings_mod.find_default()
     if cfg_file:
@@ -140,6 +143,7 @@ def scan(ctx, target, authorize, config_path, profile, no_crawl, max_urls, depth
         tags = tuple(tags) + tuple(file_cfg.get("tags", []))
         seeds = tuple(seeds) + tuple(file_cfg.get("seeds", []))
         proxy = proxy or file_cfg.get("proxy", "")
+        notify_url = notify_url or file_cfg.get("notify", "")
         file_headers, file_cookies = file_cfg.get("headers", {}), file_cfg.get("cookies", {})
     else:
         file_headers, file_cookies = {}, {}
@@ -151,6 +155,9 @@ def scan(ctx, target, authorize, config_path, profile, no_crawl, max_urls, depth
         except (OSError, ValueError) as exc:
             console.print(f"[red]Baseline error:[/] {exc}")
             sys.exit(2)
+
+    if notify_url:
+        os.environ[WEBHOOK_URL_ENV] = notify_url
 
     config = ScanConfig(
         target=target,

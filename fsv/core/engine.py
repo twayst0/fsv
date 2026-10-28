@@ -34,7 +34,7 @@ from fsv.core.models import (
 from fsv.core import database as db
 from fsv.core import registry
 from fsv.core.correlate import correlate
-from fsv.core import ownership
+from fsv.core import notify, ownership
 from fsv.core import discovery
 from fsv.core.http_client import HTTPClient
 from fsv.core.netsafety import make_connector, make_trace_config, check_target
@@ -291,6 +291,7 @@ async def run_scan(
         _emit("cancelled", 1, 1, result.error or "Scan cancelled — partial results kept")
     else:
         _emit("error", 1, 1, f"Scan failed: {result.error}")
+    await notify.notify_scan(result)            # optional webhook (FSV_WEBHOOK_URL); best-effort, never raises
     return result
 
 

@@ -133,13 +133,14 @@ Real compromises are rarely one bug — they're two or three "medium" problems t
   <img src="docs/assets/findings.webp" alt="The OWASP Top 10 breakdown and the findings list with the Stripe key finding expanded: description, masked evidence, remediation and references." width="92%">
 </p>
 
-Liquid-glass UI with live progress (survives a page reload), the attack-path panel, OWASP breakdown, per-host risk trend, inline triage, module picker, scan comparison, and one-click export — reports **or paste-ready fixes**.
+Liquid-glass UI with a live stepper (survives a page reload), the attack-path panel, OWASP breakdown, per-host risk trend, sort / module filters, **bulk triage**, one-click **re-scan**, keyboard navigation, scan comparison, and one-click export — reports **or paste-ready fixes**. Light and dark themes; no third-party requests.
 
 ## Features
 
 - **Finds the pages first** — besides links: robots.txt, sitemaps, routes leaked by debug pages, and API paths quoted in your JavaScript; action-like paths are never requested. `--seed` for anything else.
 - **A badge for your README** — `fsv badge <scan_id>` writes a dated grade badge (`FSV security | A · 2026-10-25`); regenerate it from CI.
 - **Fix packs** — turn findings into **nginx / Apache / Caddy / Express / DNS** configuration (`fsv fixes <scan> nginx`). Only what was actually found; CSP is emitted report-only.
+- **Notifications** — `--notify <webhook>` (or `FSV_WEBHOOK_URL`) posts the grade and the worst findings to Slack, Discord or your own endpoint. Evidence is never included.
 - **CI-ready** — `fsv.toml`, **baselines** (gate only on *new* findings), `--fail-on`, SARIF for GitHub code scanning, and a ready-made **GitHub Action**.
 - **Triage that sticks** — false positive / accepted risk / fixed / confirmed, stored per host by stable fingerprint, re-applied to later scans, excluded from the score. Diff any two scans; per-host trend.
 - **Evidence over guesses** — exposure checks validate *content* (a `.git/HEAD` must look like one; an SPA that answers 200 to everything produces nothing). Every finding has a **confidence**, a CWE, an OWASP Top 10 (2021) category, impact and remediation.
@@ -219,7 +220,7 @@ fsv scan staging.example.com --authorize                                        
 
 ```yaml
 # .github/workflows/security.yml
-- uses: twayst0/fsv@v2.1.0          # pin a release tag (or a commit SHA)
+- uses: twayst0/fsv@v2.2.1          # pin a release tag (or a commit SHA)
   with:
     target: https://staging.example.com
     authorized: "true"          # you confirm you may test this target
@@ -240,8 +241,7 @@ application, where typical DAST scans don't go, and the two work well side by si
 | Buckets your pages load from that no longer exist | out of scope | `cloud_storage` |
 | Scripts from compromised CDNs (polyfill.io 2024) or expired domains | out of scope | `supply_chain` |
 | Email spoofing: SPF lookup limit, dead includes, DMARC, DKIM key size | out of scope | `dns_security` |
-| Debug mode visible only on error pages (Django, Werkzeug, Ignition…) | partly | `supply_chain` | scripts/styles from compromised or abandoned CDNs (polyfill.io, bootcdn, staticfile, rawgit) or from domains that are no longer registered | passive · url · ↗ |
-| `debug_mode` |
+| Debug mode visible only on error pages (Django, Werkzeug, Ignition…) | partly | `debug_mode` |
 | Several medium findings that add up to account takeover | listed separately | `correlation` attack paths |
 | Fixes as server config, triage that persists, CI baselines, MCP | — | built in |
 | Deep input fuzzing, authenticated spidering, scripted auth, JS-rendered apps | **yes** | basic |
@@ -295,6 +295,7 @@ One engine, four front doors. Address policy and proof of control live in the en
 | `FSV_REQUIRE_VERIFICATION` | off | payload-sending scans only against hosts whose owner proved control |
 | `FSV_MAX_SCANS` | `3` | concurrent scans |
 | `FSV_DISABLED_MODULES` | — | comma-separated module names to turn off |
+| `FSV_WEBHOOK_URL` / `FSV_WEBHOOK_MIN_SEVERITY` | — / `high` | POST a short summary (Slack/Discord-compatible) when a scan finds issues at or above that severity; same as `--notify URL` |
 | `FSV_PLUGIN_DIR` / `FSV_NO_PLUGINS` | `~/.fsv/plugins` / off | plugin discovery |
 | `FSV_ADVISORY_FILE` / `FSV_EOL_FILE` | — | your own JS-library advisories / end-of-life dates (JSON) |
 </details>

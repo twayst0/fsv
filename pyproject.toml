@@ -55,3 +55,11 @@ include = ["fsv*"]
 
 [tool.setuptools.package-data]
 fsv = ["web/static/*"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py311"
+
+[tool.ruff.lint]
+# real bugs only (syntax errors, undefined names, unused imports/variables); style is left to the author
+select = ["E9", "F"]

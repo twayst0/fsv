@@ -1,4 +1,3 @@
-import pytest
 
 from fsv.core import database as db
 from fsv.core.correlate import correlate, refresh_chains, MODULE

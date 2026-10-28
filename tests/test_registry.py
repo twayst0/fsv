@@ -1,7 +1,6 @@
 """The registry derives from module classes — keep it honest, and keep plugins safe."""
 import textwrap
 
-import pytest
 
 from fsv.core import registry
 from fsv.core.scanner import BaseScanner
@@ -108,3 +107,20 @@ async def test_plugin_runs_in_a_real_scan(tmp_path, monkeypatch):
     finally:
         monkeypatch.delenv("FSV_PLUGIN_DIR")
         registry.load_registry(reload=True)
+
+
+def test_plugin_api_pin_is_enforced():
+    from fsv.core.scanner import PLUGIN_API_VERSION
+
+    class Pinned(BaseScanner):
+        name = "pinned"; description = "x"; fsv_api = PLUGIN_API_VERSION
+        async def scan(self, url): return []
+    class Stale(BaseScanner):
+        name = "stale"; description = "x"; fsv_api = PLUGIN_API_VERSION + 1
+        async def scan(self, url): return []
+    class Unpinned(BaseScanner):
+        name = "unpinned"; description = "x"
+        async def scan(self, url): return []
+    assert registry.problems_with(Pinned) == []
+    assert registry.problems_with(Unpinned) == []                  # no promise made, none checked
+    assert any("plugin API" in e for e in registry.problems_with(Stale))

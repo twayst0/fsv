@@ -1,7 +1,7 @@
 import pytest
 
 from fsv.core import fixes, report
-from fsv.core.models import Confidence, Finding, ScanResult, ScanStatus, Severity
+from fsv.core.models import Finding, ScanResult, ScanStatus, Severity
 
 T = "https://www.example.com"
 

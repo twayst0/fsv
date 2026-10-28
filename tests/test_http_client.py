@@ -1,4 +1,3 @@
-import asyncio
 import pytest
 from fsv.core.http_client import TokenBucket, HTTPStats, _decode
 

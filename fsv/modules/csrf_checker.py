@@ -23,7 +23,7 @@ class CSRFScanner(BaseScanner):
 
     async def scan(self, url: str) -> list[Finding]:
         resp = await self.fetch_response(url)
-        status, headers, body = resp.status, resp.headers, resp.body
+        status, body = resp.status, resp.body
         if status == -1 or not body:
             return []
         page = urlparse(resp.url or url)
