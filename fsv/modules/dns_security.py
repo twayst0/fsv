@@ -197,12 +197,9 @@ class DNSSecurityScanner(BaseScanner):
 
         mx = dnsutil.resolve(domain, "MX", 4.0)
         mx_hosts = []
-        null_mx = False
         for rec in mx.records:
             pref, _, host = rec.partition(" ")
-            if host in ("", "."):
-                null_mx = True
-            else:
+            if host not in ("", "."):          # "0 ." is a null MX: the domain takes no mail
                 mx_hosts.append(host)
         sends_mail = bool(mx_hosts)
 
@@ -294,7 +291,7 @@ class DNSSecurityScanner(BaseScanner):
                 domain, f"SPF Include Has No SPF Record: {dom}", Severity.MEDIUM,
                 f"`{dom}` (via {via}) exists but publishes no SPF record, so evaluating this "
                 "include is a PermError and SPF fails for all mail.",
-                f"Remove the include or fix the provider's record.",
+                "Remove the include or fix the provider's record.",
                 evidence=f"{via} → {dom}: no v=spf1", refs=refs))
         return out
 

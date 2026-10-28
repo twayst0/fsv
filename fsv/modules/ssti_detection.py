@@ -11,14 +11,18 @@ from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 from fsv.core.scanner import BaseScanner
 from fsv.core.models import Finding, Severity, Confidence
+from fsv.core.probing import reflected_candidates
 
 
-# marker, rendered_result — distinctive numbers so matches aren't coincidental
+# Template syntaxes, one benign arithmetic marker each. `{0}`/`{1}` are filled with plain str.replace — an earlier
+# version used str.format on "{{{0}*{1}}}", which yields `{7331*7}` (single braces): the Jinja2/Twig/Nunjucks
+# probe never contained the syntax it was meant to test, so that whole class went undetected.
 PROBES = [
-    ("{{{0}*{1}}}",      "fsvA"),   # Jinja2 / Twig / Nunjucks
-    ("${{{0}*{1}}}",     "fsvB"),   # JSP EL / some engines
-    ("#{{{0}*{1}}}",     "fsvC"),   # Ruby / some engines
-    ("{0}*{1}|fsvmul",   "fsvD"),   # noise control
+    "{{A*B}}",      # Jinja2 / Twig / Nunjucks / Handlebars-like
+    "${A*B}",       # JSP/Spring EL, Freemarker, Velocity, JS template literals
+    "#{A*B}",       # Ruby interpolation, Thymeleaf-style
+    "<%= A*B %>",   # ERB / EJS
+    "{A*B}",        # Smarty
 ]
 A, B = 7331, 7  # 7331 * 7 = 51317 — unlikely to appear by accident
 EXPECT = str(A * B)
@@ -28,19 +32,26 @@ class SSTIScanner(BaseScanner):
     name     = "ssti"
     category = "active"
     scope    = "url"
-    description = "Server-Side Template Injection (benign math marker)"
+    description = "Server-Side Template Injection (benign math marker; hidden reflected parameters when deep)"
+
+    def __init__(self, http, scan_config) -> None:
+        super().__init__(http, scan_config)
+        self._discovery: dict = {}
 
     async def scan(self, url: str) -> list[Finding]:
         parsed = urlparse(url)
         params = parse_qs(parsed.query, keep_blank_values=True)
+        if self.deep:                                   # templates evaluate what they echo: probe names the page reflects
+            for n in await reflected_candidates(self, url, self._discovery):
+                params.setdefault(n, [""])
         if not params:
             return []
 
         findings: list[Finding] = []
 
         for param in params:
-            for tmpl, _ in PROBES[:3]:
-                payload = tmpl.format(A, B)
+            for tmpl in PROBES:
+                payload = tmpl.replace("A", str(A)).replace("B", str(B))
                 test_params = {k: v[0] for k, v in params.items()}
                 test_params[param] = payload
                 test_url = urlunparse(parsed._replace(query=urlencode(test_params)))

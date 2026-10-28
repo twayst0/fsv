@@ -5,7 +5,7 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-from fsv.core.scanner import BaseScanner
+from fsv.core.scanner import BaseScanner, mask_secret
 from fsv.core.models import Finding, Severity, Confidence
 
 
@@ -31,6 +31,9 @@ class FormSecurityScanner(BaseScanner):
                 continue
             action = urljoin(url, form.get("action") or url)
             method = (form.get("method") or "get").lower()
+            for field in form.find_all("input", attrs={"type": lambda t: t and t.lower() == "password"}):
+                if field.get("value"):                       # a pre-filled password must not be copied into the report
+                    field["value"] = mask_secret(field["value"])
             snippet = str(form)[:300]
 
             if not page_https or urlparse(action).scheme == "http":

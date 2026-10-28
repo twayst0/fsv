@@ -28,6 +28,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Query
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.requests import HTTPConnection
 from pydantic import BaseModel, Field
 
 from fsv import __version__
@@ -55,15 +56,19 @@ async def _lifespan(_app: FastAPI):
         t.cancel()
 
 
-async def _auth_for_api(request: Request) -> None:
+async def _auth_for_api(conn: HTTPConnection) -> None:
     """
     App-wide: EVERY /api/* route requires the token when one is configured. Doing this in a
     dependency (instead of a call at the top of each handler) means a route added later cannot
     forget it — /api/info did exactly that. It also runs before request-body validation, so
     an unauthenticated caller learns nothing from 422 messages.
+
+    Typed as HTTPConnection, not Request: an app-wide dependency also runs for the /ws route, and a
+    WebSocket has no Request — asking for one made every live-progress handshake fail with HTTP 500
+    (the dashboard then silently fell back to polling). The WebSocket checks its token itself.
     """
-    if request.url.path.startswith("/api/"):
-        _check_token(request)
+    if conn.url.path.startswith("/api/"):
+        _check_token(conn)
 
 
 app = FastAPI(title="FSV", version=__version__, lifespan=_lifespan,
@@ -74,7 +79,7 @@ app.add_middleware(RequestGuard, hosts=_HOSTS)
 
 # ── auth ────────────────────────────────────────────────────────────────────
 
-def _check_token(request: Request) -> None:
+def _check_token(request: HTTPConnection) -> None:
     if not API_TOKEN:
         return
     sent = request.headers.get("X-FSV-Token") or request.query_params.get("token") or ""
@@ -176,7 +181,7 @@ async def api_info(request: Request) -> dict:
         "name": "FSV",
         "version": __version__,
         "modules": registry.describe(),
-        "profiles": ["passive", "balanced", "aggressive"],
+        "profiles": ["passive", "balanced", "aggressive", "deep"],
         "report_formats": list(report_mod.FORMATS),
         "auth_required": bool(API_TOKEN),
         "verification_required": REQUIRE_VERIFICATION,

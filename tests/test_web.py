@@ -4,7 +4,7 @@ import httpx
 import pytest
 from httpx import ASGITransport
 
-from fsv.web.security import RequestGuard, allowed_hosts, _split_host
+from fsv.web.security import allowed_hosts, _split_host
 
 
 def test_split_host():
@@ -150,7 +150,7 @@ async def test_cancel_while_queued(app, monkeypatch):
 
 
 async def test_verify_endpoints_issue_challenge_and_record_proof(app, no_http_proof):
-    from fsv.core import dnsutil, ownership
+    from fsv.core import dnsutil
     from helpers import FakeDNS
     async with _client(app) as c:
         r = await c.post("/api/verify", json={"host": "https://Shop.Example.com/path"})
@@ -204,3 +204,31 @@ async def test_every_api_route_requires_the_token(app, monkeypatch):
     assert len(checked) >= 15 and ("GET", "/api/info") in checked and ("POST", "/api/scan") in checked
     async with _client(app) as c:                                             # and the public ones stay public
         assert (await c.get("/")).status_code == 200 and (await c.get("/healthz")).status_code == 200
+
+
+_SAME_ORIGIN = {"Origin": "http://127.0.0.1:7474", "Host": "127.0.0.1:7474"}   # what a browser on the dashboard sends
+
+
+def test_websocket_handshake_works_and_streams_the_final_event(app):
+    """Regression: the app-wide auth dependency asked for a Request, which a WebSocket doesn't have → HTTP 500."""
+    from starlette.testclient import TestClient
+    import fsv.web.app as webapp
+    webapp.hub.publish("ws-regress", {"type": "complete", "scan_id": "ws-regress", "summary": None})
+    with TestClient(app, base_url="http://127.0.0.1:7474") as c:
+        with c.websocket_connect("/ws/ws-regress", headers=_SAME_ORIGIN) as ws:
+            assert ws.receive_json()["type"] == "complete"
+
+
+def test_websocket_still_demands_the_token(app, monkeypatch):
+    from starlette.testclient import TestClient
+    from starlette.websockets import WebSocketDisconnect
+    import fsv.web.app as webapp
+    monkeypatch.setattr(webapp, "API_TOKEN", "s3cret")
+    with TestClient(app, base_url="http://127.0.0.1:7474") as c:
+        with pytest.raises(WebSocketDisconnect) as e:
+            with c.websocket_connect("/ws/anything", headers=_SAME_ORIGIN):
+                pass
+        assert e.value.code == 4401
+        webapp.hub.publish("ws-ok", {"type": "complete", "scan_id": "ws-ok", "summary": None})
+        with c.websocket_connect("/ws/ws-ok?token=s3cret", headers=_SAME_ORIGIN) as ws:
+            assert ws.receive_json()["type"] == "complete"

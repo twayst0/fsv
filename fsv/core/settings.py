@@ -13,6 +13,7 @@ Commit your scan settings next to your code instead of a 200-character command:
     max_time  = 900
     fail_on   = "high"
     baseline  = ".fsv-baseline.json"
+    notify    = "${FSV_WEBHOOK}"  # POST a summary here when high+ findings exist (Slack/Discord/own endpoint)
     ct_logs   = false          # true = also ask crt.sh for subdomains (sends the domain to a 3rd party)
     external  = true           # false = skip modules that contact hosts other than the target
 
@@ -32,7 +33,7 @@ SCAN_KEYS: dict[str, tuple[type, ...]] = {
     "profile": (str,), "crawl": (bool,), "max_urls": (int,), "depth": (int,), "threads": (int,),
     "timeout": (int,), "rate": (int, float), "modules": (list,), "exclude": (list,),
     "headers": (dict,), "cookies": (dict,), "tags": (list,), "robots": (bool,), "max_time": (int,),
-    "fail_on": (str,), "baseline": (str,), "ct_logs": (bool,), "external": (bool,), "seeds": (list,), "proxy": (str,),
+    "fail_on": (str,), "baseline": (str,), "ct_logs": (bool,), "external": (bool,), "seeds": (list,), "proxy": (str,), "notify": (str,),
 }
 _ENV = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 

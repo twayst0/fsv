@@ -30,6 +30,10 @@ let activeSev = null;
 let searchTerm = "";
 let MODULES = [];
 let compareSel = [];
+let sortBy = "severity";
+let modFilter = "";
+let selected = new Set();          // fingerprints ticked for bulk triage
+let lastFocus = null;              // element to give focus back to when a dialog closes
 
 const SEV = ["critical", "high", "medium", "low", "info"];
 const SEV_COLOR = { critical: "var(--crit)", high: "var(--high)", medium: "var(--med)", low: "var(--low)", info: "var(--info)" };
@@ -40,9 +44,30 @@ const STATUS_LABELS = {
 };
 
 /* ── theme ── */
-function applyTheme(t) {
+function setTheme(t) {
   document.documentElement.dataset.theme = t;
   try { localStorage.setItem("fsv-theme", t); } catch (e) {}
+}
+const REDUCED = matchMedia("(prefers-reduced-motion:reduce)");
+/* First paint: set it. Afterwards: a circle of the new theme grows out of the toggle (View Transitions API);
+   browsers without it get a plain colour cross-fade. Either way nothing flashes or jumps. */
+function applyTheme(t) {
+  const root = document.documentElement;
+  if (!root.dataset.theme || root.dataset.theme === t) { setTheme(t); return; }
+  if (REDUCED.matches) { setTheme(t); return; }
+  if (!document.startViewTransition) {
+    root.classList.add("theming"); clearTimeout(applyTheme._t);
+    applyTheme._t = setTimeout(() => root.classList.remove("theming"), 600);
+    setTheme(t); return;
+  }
+  const r = $("themeBtn").getBoundingClientRect();
+  const x = r.left + r.width / 2, y = r.top + r.height / 2;
+  const radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+  const vt = document.startViewTransition(() => setTheme(t));
+  vt.ready.then(() => root.animate(
+    { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+    { duration: 650, easing: "cubic-bezier(.22,.61,.36,1)", pseudoElement: "::view-transition-new(root)" }
+  )).catch(() => {});
 }
 $("themeBtn").onclick = () => applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
 (function () { let t = "dark"; try { t = localStorage.getItem("fsv-theme") || "dark"; } catch (e) {} applyTheme(t); })();
@@ -95,6 +120,20 @@ $("advToggle").onclick = () => {
   const p = $("advPanel"); p.classList.toggle("open");
   $("advToggle").classList.toggle("on", p.classList.contains("open"));
 };
+
+/* what the chosen profile actually does — "deep" in particular sends many more requests */
+const PROFILE_HINT = {
+  passive: "Read-only: no crafted payloads are sent (headers, TLS, DNS, cookies, scripts, exposure of files).",
+  balanced: "",
+  aggressive: "Same checks as Balanced at a higher request rate and concurrency.",
+  deep: "Thorough: crawls at least 300 URLs / depth 4, hunts for hidden parameters, probes ~90 more files, tries more payload shapes. Expect several times more requests — only for targets you own.",
+};
+function updateProfileHint() {
+  const h = $("profileHint"), t = PROFILE_HINT[$("profile").value] || "";
+  h.textContent = t; h.classList.toggle("show", !!t); h.dataset.profile = $("profile").value;
+}
+$("profile").addEventListener("change", updateProfileHint);
+updateProfileHint();
 
 /* reflect http/https prefix as the user types a scheme */
 $("target").addEventListener("input", () => {
@@ -226,15 +265,27 @@ async function pollUntilDone(scanId) {
   }
 }
 
+const STEPS = ["crawl", "recon", "scan", "done"];
 function setProgress(phase, pct, msg, found) {
-  $("pPhase").textContent = phase;
+  $("pPhaseTxt").textContent = phase;
+  $("pBar").setAttribute("aria-valuenow", Math.round(pct));
+  const at = phase === "done" ? 3 : STEPS.indexOf(phase);
+  $("stepTrack").querySelectorAll("li").forEach((li, i) => {
+    li.classList.toggle("on", at === i && phase !== "done");
+    li.classList.toggle("ok", at > i || (phase === "done"));
+  });
+  $("progressCard").dataset.phase = phase;
   $("pPct").textContent = Math.round(pct) + "%";
   $("pFill").style.width = pct + "%";
   $("pMsg").textContent = msg || "";
   $("pFound").textContent = found ? `${found} finding${found > 1 ? "s" : ""}` : "";
 }
 
+const _finished = new Set();
 async function finishScan(scanId) {
+  // the WebSocket "complete" message, its close event and the polling fallback can all arrive for one scan
+  if (_finished.has(scanId)) return;
+  _finished.add(scanId);
   setProgress("done", 100, "Scan complete", undefined);
   let d;
   try { d = await api(`/api/scan/${scanId}`); currentResult = d; renderResult(d); } catch (e) {}
@@ -280,6 +331,13 @@ function renderResult(d) {
   $("overview").classList.add("show");
   animateCount($("cCrit"), c.critical || 0); animateCount($("cHigh"), c.high || 0);
   animateCount($("cMed"), c.medium || 0); animateCount($("cLow"), c.low || 0); animateCount($("cInfo"), c.info || 0);
+  const tot = Math.max(1, c.total || 0);
+  document.querySelectorAll(".stat").forEach(st => {
+    const bar = st.querySelector(".share i"); if (!bar) return;
+    bar.style.width = "0%";
+    const k = { crit: "critical", high: "high", med: "medium", low: "low", info: "info" }[st.className.split(" ").find(x => ["crit", "high", "med", "low", "info"].includes(x))];
+    requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.width = Math.round(((c[k] || 0) / tot) * 100) + "%"; }));
+  });
 
   const score = d.risk_score || 0, grade = d.grade || "—";
   const gc = GRADE_COLOR[grade] || "var(--info)";
@@ -288,6 +346,8 @@ function renderResult(d) {
   requestAnimationFrame(() => requestAnimationFrame(() => { $("gFill").style.strokeDashoffset = off; }));
   $("gFill").style.stroke = gc;
   $("grade").textContent = grade; $("grade").style.color = gc;
+  $("grade").classList.remove("pop"); void $("grade").offsetWidth; $("grade").classList.add("pop");
+  $("gauge").style.setProperty("--gc", gc);
   animateCount($("riskScore"), score);
   $("ovTarget").textContent = (d.target || "").replace(/^https?:\/\//, "");
   $("ovTech").innerHTML = (d.tech_stack || []).map(t => `<span class="tag">${esc(t)}</span>`).join("");
@@ -301,6 +361,7 @@ function renderResult(d) {
   updateDownloadLink();
   $("dlFmt").onchange = updateDownloadLink;
 
+  selected.clear(); updateBulkBar();
   allFindings = (d.findings || []).filter(f => f.status === "open" || f.status === "confirmed");
   const suppressed = (d.findings || []).filter(f => !(f.status === "open" || f.status === "confirmed"));
   window._suppressed = suppressed;
@@ -315,8 +376,16 @@ function renderResult(d) {
   }
   $("emptyState").classList.remove("show");
   $("resultsSection").classList.remove("hidden");
+  buildModFilter();
   renderFilterChips();
   renderFindings();
+}
+
+function buildModFilter() {
+  const mods = [...new Set([...allFindings, ...(window._suppressed || [])].map(f => f.module).filter(Boolean))].sort();
+  if (modFilter && !mods.includes(modFilter)) modFilter = "";
+  $("modFilter").innerHTML = `<option value="">All modules</option>` +
+    mods.map(m => `<option value="${esc(m)}"${m === modFilter ? " selected" : ""}>${esc(m)}</option>`).join("");
 }
 
 function updateDownloadLink() {
@@ -376,12 +445,12 @@ function renderOwasp(breakdown, total) {
   $("owaspCard").classList.add("show");
   const max = Math.max(...Object.values(breakdown));
   $("owaspSummary").textContent = `${keys.length} categor${keys.length > 1 ? "ies" : "y"} across ${total} findings`;
-  $("owaspBars").innerHTML = keys.sort().map(k => {
+  $("owaspBars").innerHTML = keys.sort().map((k, ki) => {
     const n = breakdown[k], w = Math.round((n / max) * 100);
-    return `<div class="owasp-row">
+    return `<div class="owasp-row" style="--w:${w}%;--k:${ki}">
       <span class="owasp-id">${k === "other" ? "—" : k}</span>
       <span class="owasp-name">${esc(OWASP_NAMES[k] || k)}</span>
-      <span class="owasp-bar"><span style="width:${w}%"></span></span>
+      <span class="owasp-bar"><span></span></span>
       <span class="owasp-n">${n}</span></div>`;
   }).join("");
 }
@@ -430,6 +499,8 @@ function renderFilterChips() {
 function renderFindings() {
   let list = activeSev === "_sup" ? (window._suppressed || []) : allFindings;
   if (activeSev && activeSev !== "_sup") list = list.filter(f => f.severity === activeSev);
+  if (modFilter) list = list.filter(f => f.module === modFilter);
+  list = sortFindings(list);
   if (searchTerm) {
     const q = searchTerm.toLowerCase();
     list = list.filter(f => (f.title + f.description + f.url + (f.module || "") + (f.cwe || "") + (f.owasp || "")).toLowerCase().includes(q));
@@ -438,12 +509,101 @@ function renderFindings() {
   $("fCount").textContent = list.length === base ? base : `${list.length}/${base}`;
   $("findings").innerHTML = list.map((f, i) => renderFinding(f, i)).join("") ||
     `<div class="empty show" style="padding:40px"><div class="small">No findings match this filter.</div></div>`;
-  $("findings").querySelectorAll(".f-head").forEach(h => h.onclick = (e) => {
-    if (e.target.closest(".triage")) return;
-    h.closest(".finding").classList.toggle("open");
+  $("findings").querySelectorAll(".f-head").forEach(h => {
+    const toggle = () => {
+      const f = h.closest(".finding"); f.classList.toggle("open");
+      h.setAttribute("aria-expanded", f.classList.contains("open"));
+      syncExpandBtn();
+    };
+    h.onclick = (e) => { if (e.target.closest(".triage,.f-pick")) return; toggle(); };
+    h.onkeydown = (e) => {
+      if (e.target !== h) return;
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+    };
+  });
+  $("findings").querySelectorAll(".f-pick input").forEach(cb => cb.onchange = () => {
+    const fp = cb.dataset.fp;
+    cb.checked ? selected.add(fp) : selected.delete(fp);
+    cb.closest(".finding").classList.toggle("picked", cb.checked);
+    updateBulkBar();
   });
   wireTriage();
+  syncExpandBtn();
 }
+
+const CONF_RANK = { certain: 3, firm: 2, tentative: 1 };
+function sortFindings(list) {
+  const sevRank = f => SEV.length - SEV.indexOf(f.severity);
+  const cmp = {
+    severity: (a, b) => sevRank(b) - sevRank(a) || (CONF_RANK[b.confidence] || 0) - (CONF_RANK[a.confidence] || 0),
+    confidence: (a, b) => (CONF_RANK[b.confidence] || 0) - (CONF_RANK[a.confidence] || 0) || sevRank(b) - sevRank(a),
+    module: (a, b) => (a.module || "").localeCompare(b.module || "") || sevRank(b) - sevRank(a),
+    url: (a, b) => (a.url || "").localeCompare(b.url || "") || sevRank(b) - sevRank(a),
+  }[sortBy] || (() => 0);
+  return [...list].sort(cmp);          // stable; never mutates allFindings
+}
+$("sortBy").onchange = (e) => { sortBy = e.target.value; renderFindings(); };
+$("modFilter").onchange = (e) => { modFilter = e.target.value; renderFindings(); };
+
+/* expand / collapse every visible finding */
+function syncExpandBtn() {
+  const all = [...document.querySelectorAll("#findings .finding")];
+  const allOpen = all.length > 0 && all.every(f => f.classList.contains("open"));
+  $("expandAll").textContent = allOpen ? "⇲ Collapse" : "⇳ Expand";
+  $("expandAll").dataset.state = allOpen ? "open" : "closed";
+}
+function toggleAll() {
+  const open = $("expandAll").dataset.state !== "open";
+  document.querySelectorAll("#findings .finding").forEach(f => {
+    f.classList.toggle("open", open);
+    f.querySelector(".f-head").setAttribute("aria-expanded", open);
+  });
+  syncExpandBtn();
+}
+$("expandAll").onclick = toggleAll;
+
+/* re-run with whatever the form holds, against the scan that is on screen */
+$("rescanBtn").onclick = () => {
+  if (!currentResult || $("scanBtn").disabled) return;
+  $("target").value = currentResult.target.replace(/^https?:\/\//, "");
+  $("target").dispatchEvent(new Event("input"));
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  startScan();
+};
+
+/* ── bulk triage ── */
+function updateBulkBar() {
+  const n = selected.size;
+  $("bulkBar").classList.toggle("hidden", n === 0);
+  $("bulkCount").textContent = `${n} selected`;
+}
+$("bulkClear").onclick = () => {
+  selected.clear(); updateBulkBar();
+  document.querySelectorAll(".f-pick input").forEach(cb => { cb.checked = false; cb.closest(".finding").classList.remove("picked"); });
+};
+document.querySelectorAll("[data-bulk]").forEach(b => b.onclick = async () => {
+  const status = b.dataset.bulk;
+  const ids = allFindings.concat(window._suppressed || []).filter(f => selected.has(f.fingerprint || f.id)).map(f => f.id);
+  if (!ids.length) return;
+  let note = "";
+  if (status === "false_positive" || status === "accepted_risk") {
+    note = await askNote(`${ids.length} finding${ids.length > 1 ? "s" : ""} → ${STATUS_LABELS[status]}`);
+    if (note === null) return;
+  }
+  let ok = 0, fail = 0;
+  for (const id of ids) {
+    try {
+      await api(`/api/scan/${currentScanId}/triage`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ finding: id, status, note }),
+      });
+      ok++;
+    } catch (e) { fail++; }
+  }
+  toast(`${ok} triaged as ${STATUS_LABELS[status]}`, fail ? `${fail} failed` : "applies to this host", fail ? "var(--med)" : "var(--low)");
+  selected.clear();
+  try { renderResult(await api(`/api/scan/${currentScanId}`)); refreshGlobalStats(); } catch (e) {}
+});
 
 function renderFinding(f, i = 0) {
   const refs = (f.references || []).map(r => `<a href="${esc(r)}" target="_blank" rel="noopener">${esc(r)}</a>`).join("<br>");
@@ -457,15 +617,16 @@ function renderFinding(f, i = 0) {
     ? `<h4>Affected URLs (${f.affected_urls.length})</h4><pre>${esc(f.affected_urls.slice(0, 60).join("\n"))}${f.affected_urls.length > 60 ? "\n…" : ""}</pre>` : "";
   const statusBadge = (f.status && f.status !== "open")
     ? `<span class="st-badge ${f.status}">${STATUS_LABELS[f.status] || f.status}</span>` : "";
-  return `<div class="glass finding" data-fp="${esc(f.fingerprint || f.id)}" style="--i:${Math.min(i, 24)}">
-    <div class="f-head">
+  return `<div class="glass finding${selected.has(f.fingerprint || f.id) ? " picked" : ""}" data-fp="${esc(f.fingerprint || f.id)}" style="--i:${Math.min(i, 24)}">
+    <div class="f-head" role="button" tabindex="0" aria-expanded="false">
+      <label class="f-pick" title="Select for bulk triage"><input type="checkbox" data-fp="${esc(f.fingerprint || f.id)}" aria-label="Select ${esc(f.title)}" ${selected.has(f.fingerprint || f.id) ? "checked" : ""}><span class="box"></span></label>
       <span class="sev ${f.severity}">${f.severity}</span>
       <span class="f-title">${esc(f.title)}${statusBadge}</span>
       <span class="f-meta">${esc((f.url || "").replace(/^https?:\/\//, ""))}</span>
-      <span class="triage" data-fp="${esc(f.fingerprint || f.id)}" data-id="${esc(f.id)}" title="Triage">⋯</span>
+      <button type="button" class="triage" data-fp="${esc(f.fingerprint || f.id)}" data-id="${esc(f.id)}" title="Triage" aria-label="Triage: ${esc(f.title)}" aria-haspopup="menu">⋯</button>
       <span class="f-arrow">›</span>
     </div>
-    <div class="f-body"><div class="f-inner">
+    <div class="f-body"><div class="f-inner"><div class="f-pad">
       <div class="tags">${conf}${tags.map(t => `<span class="tag">${esc(t)}</span>`).join("")}</div>
       <h4>Description</h4><p>${esc(f.description)}</p>
       ${f.evidence ? `<h4>Evidence</h4><pre>${esc(f.evidence)}</pre>` : ""}
@@ -473,7 +634,7 @@ function renderFinding(f, i = 0) {
       ${affected}
       ${f.triage_note ? `<h4>Triage note</h4><p>${esc(f.triage_note)}</p>` : ""}
       ${refs ? `<h4>References</h4><p>${refs}</p>` : ""}
-    </div></div></div>`;
+    </div></div></div></div>`;
 }
 
 /* ── triage ── */
@@ -486,20 +647,31 @@ function wireTriage() {
 function openTriageMenu(anchor, findingId) {
   document.querySelectorAll(".triage-menu").forEach(m => m.remove());
   const menu = document.createElement("div");
-  menu.className = "triage-menu glass";
+  menu.className = "triage-menu glass"; menu.setAttribute("role", "menu");
   const opts = [["confirmed", "Confirm"], ["false_positive", "False positive"],
                 ["accepted_risk", "Accept risk"], ["fixed", "Mark fixed"], ["open", "Reset to open"]];
-  menu.innerHTML = opts.map(([v, l]) => `<button data-st="${v}">${l}</button>`).join("");
+  menu.innerHTML = opts.map(([v, l]) => `<button role="menuitem" data-st="${v}">${l}</button>`).join("");
   document.body.appendChild(menu);
   const r = anchor.getBoundingClientRect();
   menu.style.top = (r.bottom + window.scrollY + 6) + "px";
   menu.style.left = Math.min(r.left + window.scrollX - 120, window.innerWidth - 180) + "px";
-  menu.querySelectorAll("button").forEach(b => b.onclick = async () => {
+  const items = [...menu.querySelectorAll("button")];
+  items[0].focus();
+  menu.onkeydown = (e) => {
+    const i = items.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+    else if (e.key === "Escape") { e.preventDefault(); menu.remove(); anchor.focus(); }
+    else if (e.key === "Tab") { menu.remove(); }
+  };
+  items.forEach(b => b.onclick = async () => {
     const status = b.dataset.st;
     let note = "";
-    if (status === "false_positive" || status === "accepted_risk")
-      note = prompt("Optional note / reason:", "") || "";
     menu.remove();
+    if (status === "false_positive" || status === "accepted_risk") {
+      note = await askNote(STATUS_LABELS[status]);
+      if (note === null) return;
+    }
     try {
       await api(`/api/scan/${currentScanId}/triage`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -577,24 +749,6 @@ async function loadHistory() {
     $("histHint").textContent = compareSel.length === 2 ? "ready — click Compare" :
       compareSel.length === 1 ? "select one more" : "select two to compare";
     loadHistory();
-
-/* re-attach to a scan that was still running when the page was reloaded */
-(async function resumeActive() {
-  let active; try { active = await api("/api/active"); } catch (e) { return; }
-  if (!active || !active.length) return;
-  const s = active[active.length - 1];
-  currentScanId = s.scan_id;
-  $("target").value = s.target;
-  $("target").parentElement.classList.toggle("has-scheme", true);
-  $("scanBtn").disabled = true; $("scanBtn").classList.add("loading");
-  $("scanBtn").querySelector("span").textContent = "Scanning";
-  $("cancelBtn").classList.remove("hidden");
-  $("progressCard").classList.add("show");
-  const l = s.latest;
-  if (l && l.type === "progress") setProgress(l.phase, l.pct, l.message, l.findings);
-  toast("Re-attached to running scan", hostOf(s.target), "var(--low)");
-  openWs(s.scan_id);
-})();
   });
 }
 $("compareBtn").onclick = async () => {
@@ -618,20 +772,66 @@ function showDiff(d) {
       <div><h4 style="color:var(--crit)">New (${d.counts.new})</h4>${d.new.map(row).join("") || '<p class="muted">none</p>'}</div>
     </div>
     <p class="muted">${d.counts.persisted} finding(s) persisted across both scans.</p>`;
-  $("diffModal").classList.add("show");
+  openModal($("diffModal"), $("diffClose"));
 }
-$("diffClose").onclick = () => $("diffModal").classList.remove("show");
-$("diffModal").onclick = (e) => { if (e.target === $("diffModal")) $("diffModal").classList.remove("show"); };
+$("diffClose").onclick = () => closeModal($("diffModal"));
+$("diffModal").onclick = (e) => { if (e.target === $("diffModal")) closeModal($("diffModal")); };
+
+/* ── dialogs: focus goes in, Escape / backdrop closes, focus returns where it came from ── */
+function openModal(el, focusEl) {
+  lastFocus = document.activeElement;
+  el.classList.add("show");
+  setTimeout(() => (focusEl || el.querySelector("button,textarea,input"))?.focus(), 30);
+}
+function closeModal(el) {
+  el.classList.remove("show");
+  if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
+}
+document.addEventListener("keydown", e => {            // keep Tab inside an open dialog
+  const open = document.querySelector(".modal-back.show");
+  if (!open || e.key !== "Tab") return;
+  const f = [...open.querySelectorAll("button,textarea,input,a[href]")].filter(x => !x.disabled && x.offsetParent !== null);
+  if (!f.length) return;
+  const first = f[0], last = f[f.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
+
+/* resolves to the note text, or null when cancelled */
+function askNote(what) {
+  return new Promise(resolve => {
+    const m = $("noteModal");
+    $("noteHint").textContent = what;
+    $("noteText").value = "";
+    let done = false;
+    const finish = (v) => {
+      if (done) return; done = true;
+      $("noteForm").onsubmit = $("noteCancel").onclick = m.onclick = null;
+      closeModal(m); resolve(v);
+    };
+    $("noteForm").onsubmit = (e) => { e.preventDefault(); finish($("noteText").value.trim()); };
+    $("noteCancel").onclick = () => finish(null);
+    m.onclick = (e) => { if (e.target === m) finish(null); };
+    m._cancel = () => finish(null);
+    openModal(m, $("noteText"));
+  });
+}
 
 /* keyboard shortcuts */
 document.addEventListener("keydown", e => {
-  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") {
-    if (e.key === "Escape") e.target.blur();
+  if (e.key === "Escape") {
+    const open = document.querySelector(".modal-back.show");
+    if (open) { open._cancel ? open._cancel() : closeModal(open); return; }
+  }
+  const t = e.target;
+  if (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA" || t.isContentEditable) {
+    if (e.key === "Escape") t.blur();
     return;
   }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;      // never hijack browser shortcuts (Ctrl+T, Cmd+/ …)
   if (e.key === "/") { e.preventDefault(); $("search").focus(); }
   else if (e.key.toLowerCase() === "t") applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
-  else if (e.key === "Escape") $("diffModal").classList.remove("show");
+  else if (e.key.toLowerCase() === "e" && !$("resultsSection").classList.contains("hidden")) toggleAll();
 });
 
 loadHistory();
@@ -652,4 +852,120 @@ loadHistory();
   if (l && l.type === "progress") setProgress(l.phase, l.pct, l.message, l.findings);
   toast("Re-attached to running scan", hostOf(s.target), "var(--low)");
   openWs(s.scan_id);
+})();
+
+/* cursor spotlight on glass cards (CSS reads --mx/--my; one rAF per move, no layout) */
+(function () {
+  if (matchMedia("(hover:none)").matches || matchMedia("(prefers-reduced-motion:reduce)").matches) return;
+  let raf = 0, ev = null;
+  document.addEventListener("pointermove", e => {
+    ev = e; if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      const g = ev.target.closest && ev.target.closest(".glass");
+      if (!g) return;
+      const r = g.getBoundingClientRect();
+      g.style.setProperty("--mx", (ev.clientX - r.left) + "px");
+      g.style.setProperty("--my", (ev.clientY - r.top) + "px");
+    });
+  }, { passive: true });
+})();
+
+/* ── themed dropdowns ──
+   The browser's own <select> popup ignores the page theme (light grey list on a dark UI). Every .sel select is
+   kept as the source of truth — value, change events and ids are untouched — and gets a themed, keyboard-driven
+   listbox on top. The menu lives on <body> so the collapsing "Advanced" drawer can't clip it. */
+(function () {
+  let openMenu = null;
+  const closeAll = (refocus) => {
+    if (!openMenu) return;
+    const { menu, btn } = openMenu; openMenu = null;
+    btn.setAttribute("aria-expanded", "false");
+    menu.classList.remove("in"); menu.classList.add("out");
+    setTimeout(() => menu.remove(), 160);
+    if (refocus) btn.focus();
+  };
+  document.addEventListener("pointerdown", e => { if (openMenu && !openMenu.menu.contains(e.target) && !openMenu.btn.contains(e.target)) closeAll(); });
+  addEventListener("resize", () => closeAll());
+  addEventListener("scroll", e => { if (openMenu && !openMenu.menu.contains(e.target)) closeAll(); }, true);
+
+  function enhance(sel) {
+    if (sel._cs) return; sel._cs = true;
+    const wrap = sel.parentElement;
+    wrap.classList.add("cs");
+    sel.classList.add("cs-native"); sel.tabIndex = -1; sel.setAttribute("aria-hidden", "true");
+    const btn = document.createElement("button");
+    btn.type = "button"; btn.className = "cs-btn";
+    btn.setAttribute("aria-haspopup", "listbox"); btn.setAttribute("aria-expanded", "false");
+    btn.setAttribute("aria-label", sel.getAttribute("aria-label") || sel.title || sel.id || "Choose");
+    wrap.insertBefore(btn, sel);
+    const label = () => { const o = sel.selectedOptions[0]; btn.textContent = o ? o.textContent : ""; };
+    label();
+
+    function open(focusLast) {
+      closeAll();
+      const menu = document.createElement("div");
+      menu.className = "cs-menu glass"; menu.setAttribute("role", "listbox");
+      const opts = [];
+      const add = (o, host) => {
+        const el = document.createElement("div");
+        el.className = "cs-opt"; el.setAttribute("role", "option"); el.tabIndex = -1;
+        el.dataset.value = o.value; el.textContent = o.textContent;
+        el.setAttribute("aria-selected", o.selected ? "true" : "false");
+        if (o.selected) el.classList.add("sel");
+        el.onclick = () => choose(o.value);
+        host.appendChild(el); opts.push(el);
+      };
+      [...sel.children].forEach(ch => {
+        if (ch.tagName === "OPTGROUP") {
+          const g = document.createElement("div"); g.className = "cs-group"; g.textContent = ch.label; menu.appendChild(g);
+          [...ch.children].forEach(o => add(o, menu));
+        } else add(ch, menu);
+      });
+      document.body.appendChild(menu);
+      const r = btn.getBoundingClientRect();
+      menu.style.minWidth = Math.max(r.width, 150) + "px";
+      const below = innerHeight - r.bottom, h = Math.min(menu.scrollHeight, 300);
+      const up = below < h + 16 && r.top > below;
+      menu.style.left = Math.min(r.left, innerWidth - menu.offsetWidth - 8) + "px";
+      menu.style.top = (up ? Math.max(8, r.top - h - 6) : r.bottom + 6) + "px";
+      menu.style.maxHeight = Math.max(120, up ? r.top - 14 : below - 14, 0) + "px";
+      menu.style.transformOrigin = up ? "bottom" : "top";
+      requestAnimationFrame(() => menu.classList.add("in"));
+      btn.setAttribute("aria-expanded", "true");
+      openMenu = { menu, btn };
+      const cur = opts.find(o => o.classList.contains("sel")) || opts[0];
+      (focusLast ? opts[opts.length - 1] : cur).focus();
+      menu.scrollTop = Math.max(0, cur.offsetTop - 60);
+      menu.onkeydown = (e) => {
+        const i = opts.indexOf(document.activeElement);
+        const go = (n) => { e.preventDefault(); opts[(n + opts.length) % opts.length].focus(); };
+        if (e.key === "ArrowDown") go(i + 1);
+        else if (e.key === "ArrowUp") go(i - 1);
+        else if (e.key === "Home") go(0);
+        else if (e.key === "End") go(opts.length - 1);
+        else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (i >= 0) choose(opts[i].dataset.value); }
+        else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeAll(true); }
+        else if (e.key === "Tab") closeAll();
+        else if (e.key.length === 1) {                         // type-ahead
+          const k = e.key.toLowerCase(), n = opts.findIndex((o, j) => j > i && o.textContent.toLowerCase().startsWith(k));
+          const m = n >= 0 ? n : opts.findIndex(o => o.textContent.toLowerCase().startsWith(k));
+          if (m >= 0) opts[m].focus();
+        }
+      };
+    }
+    function choose(v) {
+      closeAll(true);
+      if (sel.value === v) return;
+      sel.value = v; label();
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    btn.onclick = () => (openMenu && openMenu.btn === btn) ? closeAll(true) : open(false);
+    btn.onkeydown = (e) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); open(e.key === "ArrowUp"); }
+    };
+    sel.addEventListener("change", label);
+    new MutationObserver(label).observe(sel, { childList: true, subtree: true });   // options rebuilt by app code
+  }
+  document.querySelectorAll(".sel > select").forEach(enhance);
 })();

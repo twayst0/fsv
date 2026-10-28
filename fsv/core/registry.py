@@ -25,7 +25,7 @@ from importlib import metadata
 from pathlib import Path
 
 from fsv.core.models import ScanProfile
-from fsv.core.scanner import BaseScanner
+from fsv.core.scanner import PLUGIN_API_VERSION, BaseScanner
 
 _VALID_CATEGORY = {"passive", "active"}
 _VALID_SCOPE    = {"site", "url"}
@@ -93,6 +93,12 @@ _EXTRA: list[tuple[str, str]] = [
     ("cloud_storage", "CloudStorageScanner"),
     ("debug_mode", "DebugModeScanner"),
     ("supply_chain", "SupplyChainScanner"),
+    ("html_leaks", "HTMLLeaksScanner"),
+    ("dom_sinks", "DOMSinksScanner"),
+    ("well_known", "WellKnownScanner"),
+    ("api_docs", "APIDocsScanner"),
+    ("https_redirect", "HTTPSRedirectScanner"),
+    ("robots_review", "RobotsReviewScanner"),
 ]
 
 
@@ -109,6 +115,9 @@ def problems_with(cls: type) -> list[str]:
         errs.append(f"scope must be one of {sorted(_VALID_SCOPE)}, got {cls.scope!r}")
     if not (cls.__dict__.get("description") or "").strip():
         errs.append("missing class-level `description`")
+    pinned = cls.__dict__.get("fsv_api")
+    if pinned is not None and pinned != PLUGIN_API_VERSION:
+        errs.append(f"written for plugin API {pinned!r}, this FSV provides API {PLUGIN_API_VERSION} — update the plugin")
     return errs
 
 

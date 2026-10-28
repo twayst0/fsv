@@ -13,6 +13,7 @@ class RobotsHintsScanner(BaseScanner):
     scope       = "site"                  # "site": once per scan · "url": once per crawled URL
     description = "Paths that robots.txt tries to hide"      # required, one line
     external    = False                   # True if it contacts hosts other than the target
+    fsv_api     = 1                       # optional: the plugin API you wrote this for (fsv.core.scanner.PLUGIN_API_VERSION)
 
     async def scan(self, url: str) -> list[Finding]:
         r = await self.http.request(url.rstrip("/") + "/robots.txt")   # cached, rate-limited, retried
@@ -30,6 +31,9 @@ class RobotsHintsScanner(BaseScanner):
 
 Run `fsv modules` — it appears with its source. A plugin that fails to import or collides with a built-in name is skipped and listed
 (`fsv modules`, `fsv doctor`); it can never break a scan.
+
+`fsv_api` is optional. If you set it and a later FSV changes the module contract, the plugin is refused with a message saying so —
+rather than failing in odd ways after an upgrade. The version only changes on incompatible changes (see the Changelog).
 
 **As a package**, expose the class (or a module containing classes) via an entry point:
 

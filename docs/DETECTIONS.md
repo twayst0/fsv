@@ -58,6 +58,12 @@ Pages reference buckets for images, downloads and often **scripts**.
 Elasticsearch, WordPress debug logs and user enumeration. End-of-life PHP / Apache / IIS / OpenSSL / Python / Drupal are
 judged against a **dated** table, so "PHP 8.1" is flagged the day it stops getting fixes.
 
+### Deep profile (`--profile deep`)
+Adds ~90 more validated paths — `.git/index` and reflog, shell/DB history, `.git-credentials`, kubeconfig, SQLite/SQL/zip backups,
+private keys (`privkey.pem`), Tomcat/Jenkins/H2/Jolokia/Solr/Elasticsearch/CouchDB consoles, Rails/Laravel/Django debug pages — plus
+backups named after the host (`/example.com.zip`, `/example.sql.gz`). Secrets that a key=value masker cannot see (URLs with passwords,
+typed commands, private keys) are **withheld** from the report entirely.
+
 ## 6. Debug mode on error pages — `debug_mode`
 A crawler reads pages that work; debug pages only appear when something fails. One request for a path
 that cannot exist shows what the site does with a 404: Django's `DEBUG=True` page (which also lists every
@@ -91,6 +97,34 @@ Each chain names its links, tells the story step by step, and states **the cheap
 triaged away (false positive / accepted / fixed), the chain is marked *superseded* and stops counting.
 
 ---
+
+## 9. Input handling that is actually exploitable — `xss`, `sqli`, `ssti`
+**XSS is judged by context, not by "the payload appeared".** FSV sends one probe (`<token>"'<><token>`), finds every place it comes back,
+classifies the syntax around it (HTML text · double/single/unquoted attribute · start of a URL attribute · JS string · JS code · comment ·
+textarea/title) and checks which of `" ' < >` survived *there*. Only a spot whose breakout character is unescaped is tested with a
+context-matched payload. Escaped output, comments, JSON echoes and non-HTML responses are not reported; a context that passes the
+characters but filters the concrete payload is reported **tentatively** (a filter is not a fix).
+**SQL injection** counts only an error that appears *after* injection (a page that always prints `SQLSTATE` is skipped), and `ora-`
+must be a real `ORA-12345` code. **SSTI** probes every common syntax (`{{…}}`, `${…}`, `#{…}`, `<%= … %>`, `{…}`) with a benign product.
+**Deep profile:** one request carries a unique canary for ~14 common parameter names (`q`, `search`, `lang`, `redirect`…); names whose
+canary comes back are parameters the page reads and are then tested, even though no link mentions them. SQLi also tries the names
+SQL-backed pages usually read (`id`, `cat`, `sort`…) once per path.
+
+## 10. Client-side flows no server-side check can see — `dom_sinks`, `html_leaks`
+FSV cannot run JavaScript, but it can *read* it. `dom_sinks` looks in inline scripts and first-party bundles (libraries are skipped) for
+URL sources (`location.hash/search/href`, `document.referrer`, `window.name`) reaching `innerHTML`, `document.write`, `eval`,
+`setTimeout("…")`, jQuery `.html()`/`$(location.hash)` or `location =` — directly (firm) or through a variable (tentative; sanitisers such
+as DOMPurify/`textContent`/`encodeURIComponent` clear it) — and for `message` handlers that never read `event.origin`.
+`html_leaks` reads what never renders: credentials, private IPs and server paths in comments (masked), a pre-filled password field,
+hidden `role`/`price`/`is_admin`/`user_id` fields.
+
+## 11. Transport and identity configuration — `ssl`, `https_redirect`, `well_known`, `api_docs`
+`ssl` classifies a failed handshake from OpenSSL's own verdict (expired · not yet valid · self-signed · incomplete chain · hostname
+mismatch — earlier versions called *every* failure "self-signed"), reads the certificate (RSA <2048, EC <224, SHA-1/MD5 signature,
+expiry), and actually **tries TLS 1.0 and 1.1**: reading the protocol a modern client negotiates can never show that a server still offers
+the old ones. `https_redirect` follows port 80 hop by hop (serves content / goes through another host over HTTP / never reaches HTTPS).
+`well_known` reads OIDC discovery and JWKS — a **private or symmetric key in the JWKS** lets anyone mint tokens. `api_docs` reads exposed
+OpenAPI documents and reports unauthenticated or sensitive-looking operations; it also flags Swagger UI, GraphiQL and Playground.
 
 ## Coverage: finding the pages first
 Links are only part of a modern site. Before crawling, FSV also reads `robots.txt` paths, sitemaps

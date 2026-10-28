@@ -68,3 +68,23 @@ def rsa_public_key_b64(bits: int) -> str:
     der = rsa.RSAPublicNumbers(65537, n).public_key().public_bytes(
         serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
     return base64.b64encode(der).decode()
+
+
+class DynamicHTTP:
+    """handler(url) -> (status, body[, headers]) — a tiny app whose answer depends on the query string."""
+    def __init__(self, handler):
+        self.handler = handler
+        self.requested: list[str] = []
+
+    async def request(self, url, method="GET", **kw) -> Response:
+        self.requested.append(url)
+        status, body, *rest = self.handler(url)
+        return Response(status=status, headers=(rest[0] if rest else {}), body=body, url=url)
+
+
+HTML = {"Content-Type": "text/html; charset=utf-8"}
+
+
+def query(url: str) -> dict[str, str]:
+    from urllib.parse import parse_qs, urlparse
+    return {k: v[0] for k, v in parse_qs(urlparse(url).query, keep_blank_values=True).items()}

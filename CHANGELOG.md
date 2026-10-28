@@ -1,5 +1,32 @@
 # Changelog
 
+## 2.3.0
+**Fixed**
+- **Dashboard live progress never connected.** The app-wide auth dependency asked for a `Request`, which a WebSocket does not have, so every `/ws/<scan>` handshake failed with HTTP 500 and the UI silently fell back to polling once a second. Now typed as `HTTPConnection`; regression tests cover the handshake and that the token is still enforced.
+- A copy of the "re-attach to a running scan" block was pasted inside the compare-checkbox handler (it re-attached and toasted on every tick); removed.
+- Keyboard shortcuts (`T`, `/`) fired while typing in the header/cookie text areas and on `Ctrl/Cmd` combinations.
+- Light theme: a ticked checkbox (including "I am authorized") looked unticked, and the logo was washed out.
+- The completion toast appeared twice once the WebSocket worked (WebSocket + close event + polling fallback all finished the same scan).
+- The dashboard no longer requests Google Fonts: a local-first tool should not phone a third party.
+- README: the "FSV and OWASP ZAP" table was broken by a stray module-catalogue row; the Action example pinned `v2.1.0`.
+
+**Deeper scanning** — the biggest accuracy and coverage change since 2.0
+- **`--profile deep`** (also in the dashboard and MCP): crawls ≥300 URLs / depth ≥4, **discovers hidden parameters** (one request carries a canary for ~14 common names; those the page echoes are tested, even though no link mentions them), probes **~90 more exposed files** plus backups named after the host (`/example.com.zip`, `/example.sql.gz`), tries every payload shape for a context, and checks whether `robots.txt` Disallow paths really answer. About 1.8× the requests on a small site; never loses a finding a normal scan would report.
+- **XSS is now context-aware.** One probe finds every place an input comes back, classifies the syntax (HTML text, quoted/unquoted attribute, URL attribute, JS string, JS code, comment, textarea/title) and checks which of `" ' < >` survived *there*; a context-matched payload then confirms. No more findings for JSON echoes, comments or correctly escaped output; no more misses when only a quote or a script-block breakout is possible. A passed-through-but-filtered payload is reported tentatively.
+- **SQLi** counts only a database error that appears *after* injection (a page that always prints one is skipped); `ora-` now needs a real `ORA-12345` code (it matched "flora-"). Deep also tries `id`, `cat`, `sort`… per path.
+- **SSTI was broken for the most common template syntax**: the Jinja2/Twig/Nunjucks probe was built with `str.format` and went out as `{7331*7}` instead of `{{7331*7}}`, so that whole class was never detected (and the module had no tests). Fixed; probes for `${}`, `#{}`, `<%= %>` and `{}` too.
+- **`ssl` rewritten**: classifies failures from OpenSSL's verdict (expired · not yet valid · self-signed · incomplete chain · hostname mismatch — it used to call *every* failure "self-signed"), reads the certificate (RSA <2048, EC <224, SHA-1/MD5 signature, expiry), and **really tries TLS 1.0 and 1.1** (reading the protocol a modern client negotiates can never reveal that a server still offers them). Pure analysis function, 17 tests.
+- **Six new passive modules (38 total)**: `html_leaks` (secrets/internal hosts in HTML comments, pre-filled password fields, trust-bearing hidden fields), `dom_sinks` (DOM XSS and `postMessage` without origin check, static analysis of first-party JS), `well_known` (OIDC/OAuth discovery misconfiguration and **private/symmetric keys published in JWKS**), `api_docs` (reads exposed OpenAPI for unauthenticated/sensitive routes; Swagger UI, GraphiQL, Playground), `https_redirect` (port 80 serving content, redirect hops over HTTP, HSTS without `includeSubDomains`), `robots_review` (sensitive Disallow entries, non-production hosts in the sitemap).
+- **Fixed (found by the new end-to-end test):** `form_security` copied a pre-filled password's value into the report's evidence. Previews of deep-list files whose secrets are not key=value (private keys, `.git-credentials`, shell history, tfstate, kubeconfig) are withheld entirely.
+
+**Added**
+- **Webhook notifications**: `--notify URL` / `notify` in `fsv.toml` / `FSV_WEBHOOK_URL` post a Slack- and Discord-compatible summary when a scan finds issues at or above `FSV_WEBHOOK_MIN_SEVERITY` (default `high`). Open findings only, no evidence, best-effort (10 s cap, never fails a scan). Sent by the engine, so CLI, dashboard, MCP and CI behave the same.
+- **Dashboard**: sort (severity / confidence / module / URL), module filter, expand/collapse all (`E`), **bulk triage** with a checkbox per finding, one-click **re-scan**, a note dialog instead of `window.prompt`, a crawl → recon → scan → done stepper, severity share bars.
+- **Dashboard motion**: spring easing, height-animated finding details (no more clipped long findings), cursor spotlight on glass cards, theme cross-fade, animated OWASP bars, toast timers; all of it off under `prefers-reduced-motion`.
+- **Accessibility**: findings are keyboard-operable (`Enter`/`Space`, `aria-expanded`), triage is a real button with an arrow-key menu, dialogs trap focus and restore it, live region on progress, visible focus rings, skip link.
+- **Plugin API version**: `fsv.core.scanner.PLUGIN_API_VERSION`; a plugin may pin `fsv_api = 1` and is refused with a clear message if a later FSV changes the contract.
+- **Engineering**: `ruff` and `pip-audit` in CI, Dependabot (pip, Actions, Docker), unused imports removed.
+
 ## 2.2.1
 - **Licence: MIT.** FSV is now released under the MIT License (2.2.0 was AGPL-3.0, earlier versions a custom non-commercial licence). The CLA now says contributions come in under MIT and create no co-ownership.
 - Author shown as `twayst0` everywhere.

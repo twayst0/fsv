@@ -16,7 +16,6 @@ create anything. Contacts hosts other than the target (module is `external`).
 """
 
 from __future__ import annotations
-import re
 
 from fsv.core import dnsutil
 from fsv.core.content import find_bucket_refs, is_html, load_scripts, script_refs
