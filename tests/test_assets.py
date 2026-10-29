@@ -90,3 +90,13 @@ def test_mcp_registry_metadata_matches_the_package():
     pypi_readme = open(os.path.join(ROOT, "docs", "PYPI.md"), encoding="utf-8").read()
     assert f"mcp-name: {d['name']} " in pypi_readme or f"mcp-name: {d['name']}\n" in pypi_readme \
         or f"mcp-name: {d['name']} -->" in pypi_readme, "PyPI ownership marker must match server.json"
+
+
+def test_hero_advertises_the_current_version_and_module_count():
+    """The hero said "v2.2" for three releases because the number was typed by hand."""
+    from fsv import __version__
+    from fsv.core import registry
+    hero = open(os.path.join(ASSETS, "hero.svg"), encoding="utf-8").read()
+    assert f"v{'.'.join(__version__.split('.')[:2])} " in hero, "re-run scripts/make_readme_assets.py"
+    for svg in ("pipeline.svg", "terminal.svg"):
+        assert f"{len(registry.load_registry())} modules" in open(os.path.join(ASSETS, svg), encoding="utf-8").read(), svg
