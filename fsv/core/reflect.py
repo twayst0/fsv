@@ -286,12 +286,25 @@ COMMON_PARAMS = (
     "return", "returnUrl", "callback", "lang", "file", "path", "ref", "error", "msg", "message", "email", "user",
     "view", "action", "type", "category", "sort", "filter", "debug", "data", "text", "value", "input", "param",
 )
+# full profile: a much longer list (search/redirect/template/debug/format/API-style names)
+EXTRA_PARAMS = (
+    "keywords", "s_query", "searchterm", "search_query", "qs", "term", "text", "content", "body", "comment", "description", "subject",
+    "uri", "link", "target", "dest", "destination", "continue", "redirect_uri", "redirect_url", "return_url", "returnTo", "goto", "forward", "out",
+    "image", "img", "src", "source", "resource", "document", "doc", "folder", "dir", "template", "tpl", "layout", "theme", "style", "include",
+    "page_id", "pid", "post", "post_id", "article", "item", "item_id", "product", "product_id", "cat", "cat_id", "category_id", "tag", "slug",
+    "uid", "user_id", "userid", "username", "login", "account", "member", "profile", "customer", "order", "order_id", "invoice", "ref_id",
+    "format", "output", "fmt", "mode", "step", "tab", "section", "module", "controller", "func", "method", "cmd", "command", "exec", "query_string",
+    "sortby", "order_by", "orderby", "dir", "limit", "offset", "start", "end", "from", "to", "date", "year", "month", "day", "country", "region",
+    "locale", "language", "currency", "host", "domain", "site", "server", "ip", "port", "proxy", "callback_url", "jsonp", "cb", "fn",
+    "error_message", "err", "success", "status", "code", "reason", "notice", "alert", "info", "warning", "flash", "msg_text", "feedback",
+)
 CHUNK = 14
 
 
-def candidate_names(existing: list[str]) -> list[str]:
+def candidate_names(existing: list[str], full: bool = False) -> list[str]:
     have = {e.lower() for e in existing}
-    return [n for n in COMMON_PARAMS if n.lower() not in have]
+    pool = list(dict.fromkeys(COMMON_PARAMS + EXTRA_PARAMS)) if full else COMMON_PARAMS
+    return [n for n in pool if n.lower() not in have]
 
 
 def canary_for(name: str) -> str:

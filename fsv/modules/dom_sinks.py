@@ -17,7 +17,7 @@ passes through a known sanitizer (DOMPurify, textContent, encodeURIComponent…)
 from __future__ import annotations
 import re
 
-from fsv.core.content import is_html, load_scripts
+from fsv.core.content import MAX_SCRIPTS_PER_PAGE, is_html, load_scripts
 from fsv.core.models import Confidence, Finding, Severity
 from fsv.core.scanner import BaseScanner
 
@@ -124,7 +124,8 @@ class DOMSinksScanner(BaseScanner):
         r = await self.http.request(url)
         if not r.ok or r.status != 200 or not is_html(r.headers, r.body):
             return []
-        scripts, inline = await load_scripts(self.http, url, r.body, first_party_only=True, skip=self._seen_scripts)
+        scripts, inline = await load_scripts(self.http, url, r.body, first_party_only=True, skip=self._seen_scripts,
+                                             limit=100 if self.full else MAX_SCRIPTS_PER_PAGE)
         units: list[tuple[str, str]] = []
         for body in inline:
             if hash(body) not in self._seen_inline:

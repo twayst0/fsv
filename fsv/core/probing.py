@@ -30,9 +30,10 @@ async def reflected_candidates(scanner, url: str, memo: dict) -> list[str]:
         return memo[key]
     existing = {k: v[0] for k, v in parse_qs(p.query, keep_blank_values=True).items()}
     found: list[str] = []
-    names = candidate_names(list(existing))
-    for i in range(0, len(names), CHUNK):
-        chunk = names[i:i + CHUNK]
+    names = candidate_names(list(existing), full=getattr(scanner, "full", False))
+    step = 30 if getattr(scanner, "full", False) else CHUNK          # ~3.5 KB of query string at most: servers accept ≥ 8 KB
+    for i in range(0, len(names), step):
+        chunk = names[i:i + step]
         query = {**existing, **{n: canary_for(n) for n in chunk}}
         r = await scanner.fetch_response(urlunparse(p._replace(query=urlencode(query))))
         if r.ok and r.status == 200 and r.body and is_html(r.headers, r.body):

@@ -5,10 +5,10 @@
 <p align="center">
   <a href="https://github.com/twayst0/fsv/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/twayst0/fsv/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-111111?style=flat-square&logo=python&logoColor=white&labelColor=000000">
-  <img alt="38 modules" src="https://img.shields.io/badge/modules-38-e5e5e5?style=flat-square&labelColor=000000">
+  <img alt="40 modules" src="https://img.shields.io/badge/modules-40-e5e5e5?style=flat-square&labelColor=000000">
   <img alt="MCP server" src="https://img.shields.io/badge/MCP-ready-e5e5e5?style=flat-square&labelColor=000000">
   <img alt="detection only" src="https://img.shields.io/badge/mode-detection--only-9a9aa3?style=flat-square&labelColor=000000">
-  <img alt="tests" src="https://img.shields.io/badge/tests-500%2B-9a9aa3?style=flat-square&labelColor=000000">
+  <img alt="tests" src="https://img.shields.io/badge/tests-540%2B-9a9aa3?style=flat-square&labelColor=000000">
   <img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-5f5f68?style=flat-square&labelColor=000000">
 </p>
 
@@ -168,6 +168,7 @@ Requires **Python 3.11+**. Docker: see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) 
 fsv scan example.com --authorize                       # full scan of a site you own
 fsv scan example.com --authorize --profile passive     # read-only: no payloads sent
 fsv scan example.com --authorize --profile deep        # thorough: hidden parameters, ~90 more files, more payload shapes (slower)
+fsv scan example.com --authorize --profile full --max-time 3600   # exhaustive: 1000+ URLs, ~600 guessed paths, backup copies, boolean SQLi
 fsv web                                                # dashboard → http://127.0.0.1:7474
 ```
 
@@ -221,7 +222,7 @@ fsv scan staging.example.com --authorize                                        
 
 ```yaml
 # .github/workflows/security.yml
-- uses: twayst0/fsv@v2.3.0          # pin a release tag (or a commit SHA)
+- uses: twayst0/fsv@v2.4.0          # pin a release tag (or a commit SHA)
   with:
     target: https://staging.example.com
     authorized: "true"          # you confirm you may test this target
@@ -247,9 +248,9 @@ application, where typical DAST scans don't go, and the two work well side by si
 | Fixes as server config, triage that persists, CI baselines, MCP | — | built in |
 | Deep input fuzzing, authenticated spidering, scripted auth, JS-rendered apps | **yes** | basic |
 
-## Modules (38)
+## Modules (40)
 
-FSV ships **38 modules** — 32 passive, 6 active. Run `fsv modules` for the live list.
+FSV ships **40 modules** — 34 passive, 6 active. Run `fsv modules` for the live list.
 
 <details>
 <summary><b>The full catalogue</b> &nbsp;<sub>(or run <code>fsv modules</code>)</sub></summary>
@@ -269,6 +270,8 @@ FSV ships **38 modules** — 32 passive, 6 active. Run `fsv modules` for the liv
 | `well_known` | OIDC/OAuth discovery (http endpoints, `alg=none`, implicit/password grants, no PKCE) and **private/symmetric keys published in JWKS** | passive · site |
 | `api_docs` | reads exposed OpenAPI (unauthenticated & sensitive routes, HTTP servers, secrets); Swagger UI, GraphiQL, Playground | passive · site |
 | `https_redirect` | does port 80 serve content / hop through another host over HTTP / never reach HTTPS; HSTS without `includeSubDomains` | passive · site |
+| `content_discovery` | **full:** ~600 common directories/pages nothing links to (admin, backup, staging, uploads…), calibrated against catch-all servers | passive · site |
+| `backup_files` | **full:** `.bak` / `~` / `.old` / `.swp` copies of every crawled script and config that serve source code as text | passive · url |
 | `robots_review` | sensitive `Disallow` entries, (deep) whether they answer, staging hosts in the sitemap | passive · site |
 | `tech` | stack fingerprint + **end-of-life** software from a dated table | passive · site |
 | `headers` · `csp_analyzer` | security headers · deep CSP review | passive |
@@ -278,7 +281,7 @@ FSV ships **38 modules** — 32 passive, 6 active. Run `fsv modules` for the liv
 | `info_disclosure` · `dir_listing` · `http_methods` · `security_txt` · `waf_detect` · `graphql_introspection` · `jwt_analysis` · `subdomain` | exposure & recon | passive |
 | `xss` · `sqli` · `ssti` · `open_redirect` · `cors` · `host_header_injection` | reflected/error-based/marker checks (benign payloads). XSS is **context-aware** (HTML text, attribute, JS string); SQLi reports only errors the injection *caused* | **active** |
 
-↗ contacts hosts other than the target (skip with `--no-external`). `passive` = sends no crafted payloads. **Profiles:** `passive` (only passive modules), `balanced` (default), `aggressive` (higher rate/concurrency), `deep` (widest crawl, hidden-parameter discovery, larger exposed-file list, more payload shapes — slower).
+↗ contacts hosts other than the target (skip with `--no-external`). `passive` = sends no crafted payloads. **Profiles:** `passive` (only passive modules), `balanced` (default), `aggressive` (higher rate/concurrency), `deep` (wider crawl, hidden-parameter discovery, larger exposed-file list, more payload shapes — slower), `full` (everything in deep, then exhaustive: 1000+ URLs at depth 6, ~600 guessed paths, backup copies, boolean SQLi, 160 parameter names — slowest).
 </details>
 
 ## How it works

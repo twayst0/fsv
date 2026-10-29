@@ -9,7 +9,7 @@ reports.
 Use ONLY against systems you own or are explicitly authorized to test.
 """
 
-__version__ = "2.3.0"
+__version__ = "2.4.0"
 __author__  = "twayst0 (tways)"
 __license__ = "MIT"
 

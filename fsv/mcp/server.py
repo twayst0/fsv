@@ -111,7 +111,7 @@ def _validate(target: str) -> tuple[str | None, str | None]:
         "skips logout/asset links) and runs modules by profile: 'passive' sends no payloads "
         "(headers, SSL/TLS, DNS, cookies, WAF, fingerprint, JWT, CSP, SRI, security.txt); "
         "'balanced' (default) adds safe active checks (XSS, SQLi, CORS, open-redirect, SSTI, "
-        "host-header); 'aggressive' is the same modules at higher rate/concurrency; 'deep' is the most thorough (wider crawl, hidden-parameter discovery, larger exposed-file list, more payload shapes — many more requests, only for targets the user owns). Returns "
+        "host-header); 'aggressive' is the same modules at higher rate/concurrency; 'deep' is thorough (wider crawl, hidden-parameter discovery, larger exposed-file list, more payload shapes — many more requests, only for targets the user owns); 'full' is exhaustive (1000+ URLs at depth 6, ~600 guessed directories/pages, backup copies of every script, boolean SQLi, 160 parameter names — the slowest and busiest; always set max_minutes). Returns "
         "findings grouped with severity, CWE, OWASP category, confidence and remediation. "
         "Time-boxed by max_minutes (default 20; partial results are kept). "
         "use_ct_logs=true also asks Certificate Transparency logs (crt.sh) for subdomains "
@@ -317,7 +317,8 @@ async def fsv_list_modules() -> str:
             "passive":    "passive modules only — no payloads",
             "balanced":   "all modules, safe active checks, polite rate (default)",
             "aggressive": "all modules, higher rate & concurrency",
-            "deep":       "all modules, widest crawl, hidden-parameter discovery, larger file list, more payload shapes (slower, many more requests)",
+            "deep":       "all modules, wider crawl, hidden-parameter discovery, larger file list, more payload shapes (slower, many more requests)",
+            "full":       "everything in deep, then exhaustive: 1000+ URLs depth 6, ~600 guessed paths, backup-file probing, boolean SQLi, 160 parameter names (slowest)",
         },
         "modules": mods,
     })

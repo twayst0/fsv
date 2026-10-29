@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import fnmatch
 import logging
+import re
 import uuid
 from collections import deque
 from datetime import datetime, timezone
@@ -87,6 +88,8 @@ def new_scan_id() -> str:
 
 DEEP_MIN_URLS = 300
 DEEP_MIN_DEPTH = 4
+FULL_MIN_URLS = 1000
+FULL_MIN_DEPTH = 6
 
 
 def _profile_tuning(cfg: ScanConfig) -> tuple[float, int]:
@@ -98,6 +101,8 @@ def _profile_tuning(cfg: ScanConfig) -> tuple[float, int]:
         rate = min(rate, 15.0)
     elif cfg.profile == ScanProfile.DEEP:
         rate = max(rate, 30.0)                 # it sends many more requests; keep the wall-clock time reasonable
+    elif cfg.profile == ScanProfile.FULL:
+        rate, threads = max(rate, 40.0), max(threads, 15)
     return rate, threads
 
 
@@ -126,8 +131,9 @@ async def run_scan(
     await db.init_db()
     if scan_config.deep:
         # explicit larger values are kept; the defaults are widened
-        scan_config = scan_config.model_copy(update={"max_urls": max(scan_config.max_urls, DEEP_MIN_URLS),
-                                                     "depth": max(scan_config.depth, DEEP_MIN_DEPTH)})
+        lo_urls, lo_depth = (FULL_MIN_URLS, FULL_MIN_DEPTH) if scan_config.full else (DEEP_MIN_URLS, DEEP_MIN_DEPTH)
+        scan_config = scan_config.model_copy(update={"max_urls": max(scan_config.max_urls, lo_urls),
+                                                     "depth": max(scan_config.depth, lo_depth)})
     scan_id    = scan_id or new_scan_id()
     started_at = datetime.now(timezone.utc).isoformat()
 
@@ -412,6 +418,7 @@ class Crawler:
         self.host   = p.netloc.lower()
         self.disallow: list[str] = []
         self.scripts_seen: set[str] = set()
+        self.script_cap = 150 if cfg.full else 40
         # where crawl seeds came from, beyond <a href> — reported in scan stats
         self.discovered: dict[str, int] = {}
 
@@ -467,7 +474,7 @@ class Crawler:
                 paths += discovery.js_routes(tag.string or "")
                 continue
             full = urljoin(base, src).split("#", 1)[0]
-            if not same_origin(full, self.host) or full in self.scripts_seen or len(self.scripts_seen) >= 40:
+            if not same_origin(full, self.host) or full in self.scripts_seen or len(self.scripts_seen) >= self.script_cap:
                 continue
             self.scripts_seen.add(full)
             r = await self.http.request(full)
@@ -524,7 +531,43 @@ class Crawler:
                 found.append(full)
         found.extend(self._form_urls(soup, base))
         found.extend(await self._script_routes(soup, base))
+        if self.cfg.full:
+            found.extend(self._extra_link_kinds(soup, base))
         return list(dict.fromkeys(found))
+
+    _DATA_ATTRS = ("data-href", "data-url", "data-link", "data-target-url", "data-src", "data-action", "data-redirect")
+
+    def _extra_link_kinds(self, soup, base: str) -> list[str]:
+        """
+        Full profile: pages reachable only through things a plain <a href> crawl ignores — pagination hints
+        (<link rel=next>), canonical/alternate versions, <meta http-equiv=refresh>, frames/objects, data-* link
+        attributes used by JS routers, and URLs quoted in inline `onclick="location.href='…'"`.
+        """
+        cand: list[str] = []
+        for tag in soup.find_all("link", href=True):
+            if {"next", "prev", "previous", "alternate", "canonical", "first", "last", "index", "up"} & set(tag.get("rel") or []):
+                cand.append(tag["href"])
+        for tag in soup.find_all("meta"):
+            if (tag.get("http-equiv") or "").lower() == "refresh":
+                m = re.search(r"url\s*=\s*['\"]?([^'\";]+)", tag.get("content") or "", re.I)
+                if m:
+                    cand.append(m.group(1).strip())
+        for tag in soup.find_all(["frame", "object", "embed"]):
+            cand.append(tag.get("src") or tag.get("data") or "")
+        for attr in self._DATA_ATTRS:
+            for tag in soup.find_all(attrs={attr: True}):
+                cand.append(tag[attr])
+        for tag in soup.find_all(attrs={"onclick": True}):
+            for m in re.finditer(r"(?:location(?:\.href)?\s*=|window\.open\(|location\.assign\()\s*['\"]([^'\"]+)['\"]", tag["onclick"]):
+                cand.append(m.group(1))
+        out = []
+        for href in cand:
+            if not href or href.startswith(("javascript:", "mailto:", "tel:", "data:", "#")):
+                continue
+            full = canonical_url(urljoin(base, href))
+            if same_origin(full, self.host) and not self.excluded(full):
+                out.append(full)
+        return out
 
     _FORM_SKIP = {"password", "file", "submit", "button", "image", "reset"}
 

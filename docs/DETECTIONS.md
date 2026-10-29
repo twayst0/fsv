@@ -64,6 +64,18 @@ private keys (`privkey.pem`), Tomcat/Jenkins/H2/Jolokia/Solr/Elasticsearch/Couch
 backups named after the host (`/example.com.zip`, `/example.sql.gz`). Secrets that a key=value masker cannot see (URLs with passwords,
 typed commands, private keys) are **withheld** from the report entirely.
 
+### Full profile (`--profile full`) — exhaustive
+Everything in deep, then: the crawl reaches ≥1000 URLs at depth 6 and also follows what a plain `<a href>` crawl ignores
+(`<link rel=next/prev/alternate/canonical>`, `<meta http-equiv=refresh>`, frames, `data-href`/`data-url` attributes used by JS routers,
+`onclick="location.href=…"`, up to 150 scripts for quoted API routes). `content_discovery` tries ~600 common directory and page names that
+nothing links to (admin, backup, staging, uploads, installers…) — calibrated first against random impossible names so a catch-all
+server (200 or 403 for everything) yields nothing — and reports them as one aggregated finding, with administrative-sounding names called
+out. `backup_files` asks for `.bak`, `.old`, `~`, `.orig`, `.swp`… of every crawled script/config and reports only a response that *looks
+like source code* (`<?php`, `<%@`, an ini section…) and is not an HTML page; contents are never copied into the report.
+SQLi gets **boolean-based** detection (`… AND 1=1` answers like the original, `… AND 1=2` does not — twice in a row, the injected text
+removed from the comparison; tentative). The hidden-parameter list grows from 38 to 160 names. A full scan can send tens of thousands
+of requests: the dashboard pre-selects a 1-hour limit, and `--max-time` is recommended on the CLI.
+
 ## 6. Debug mode on error pages — `debug_mode`
 A crawler reads pages that work; debug pages only appear when something fails. One request for a path
 that cannot exist shows what the site does with a 404: Django's `DEBUG=True` page (which also lists every
