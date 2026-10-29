@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.0
+- **`--profile full`** (CLI, dashboard dropdown, MCP): the most thorough scan FSV has. Everything in `deep`, then exhaustive — the crawl reaches ≥1000 URLs at depth 6 and also follows `<link rel=next/canonical>`, `<meta refresh>`, frames, `data-href`/`data-url` attributes and `onclick="location.href=…"`; **`content_discovery`** guesses ~600 common directories/pages nothing links to (calibrated against catch-all servers); **`backup_files`** looks for `.bak`/`~`/`.old`/`.swp` copies of every crawled script and config that serve source code as text (contents never reported); **boolean-based SQL injection** (differential, repeated, payload echo removed); a 160-name hidden-parameter list (deep: 38); higher per-page script/source-map limits. 40 modules now. The dashboard pre-selects a 1-hour time limit for it.
+- **Fixed: stale dashboard after an upgrade.** The page and `/static/*` were served without `Cache-Control`, so a browser could keep showing the previous version's CSS/JS (old dropdown, old spinner layout) against the new server. They are now `no-cache` (cheap 304s via ETag).
+
 ## 2.3.0
 **Fixed**
 - **Dashboard live progress never connected.** The app-wide auth dependency asked for a `Request`, which a WebSocket does not have, so every `/ws/<scan>` handshake failed with HTTP 500 and the UI silently fell back to polling once a second. Now typed as `HTTPConnection`; regression tests cover the handshake and that the token is still enforced.

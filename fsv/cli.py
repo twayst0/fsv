@@ -53,9 +53,10 @@ _ORDER = ["info", "low", "medium", "high", "critical"]
               help="Confirm you own or are authorized to test this target (REQUIRED).")
 @click.option("--config", "config_path", default=None, type=click.Path(dir_okay=False),
               help="Settings file (default: ./fsv.toml if present). Flags override it.")
-@click.option("--profile", type=click.Choice(["passive", "balanced", "aggressive", "deep"]),
+@click.option("--profile", type=click.Choice(["passive", "balanced", "aggressive", "deep", "full"]),
               default="balanced",
-              help="Scan intensity. deep = widest crawl, hidden-parameter discovery, larger file list, more payload shapes (slower).")
+              help="Scan intensity. deep = wider crawl, hidden-parameter discovery, larger file list, more payload shapes. "
+                   "full = everything in deep, then exhaustive: 1000+ URLs, ~600 guessed paths, backup copies, boolean SQLi (slowest).")
 @click.option("--no-crawl", is_flag=True, help="Scan only the given URL, don't crawl.")
 @click.option("--max-urls", default=50, help="Maximum URLs to scan.")
 @click.option("--depth", default=2, help="Crawl depth.")

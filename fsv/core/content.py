@@ -61,7 +61,7 @@ def same_site(url: str, page_url: str) -> bool:
 
 
 async def load_scripts(http, page_url: str, html: str, *, first_party_only: bool,
-                       skip: set[str] | None = None) -> tuple[list[Script], list[str]]:
+                       skip: set[str] | None = None, limit: int = MAX_SCRIPTS_PER_PAGE) -> tuple[list[Script], list[str]]:
     """
     Fetch the page's external scripts (bounded). `skip` lets a module avoid
     re-analysing a script it already handled on another page. Returns
@@ -69,7 +69,7 @@ async def load_scripts(http, page_url: str, html: str, *, first_party_only: bool
     """
     urls, inline = script_refs(html, page_url)
     out: list[Script] = []
-    for u in urls[:MAX_SCRIPTS_PER_PAGE]:
+    for u in urls[:limit]:
         fp = same_site(u, page_url)
         if first_party_only and not fp:
             continue

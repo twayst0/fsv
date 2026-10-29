@@ -41,8 +41,13 @@ class BaseScanner(ABC):
 
     @property
     def deep(self) -> bool:
-        """True under the `deep` profile: a module may then widen its own search (more paths, parameters, payload shapes)."""
+        """True under the `deep` and `full` profiles: a module may then widen its own search (more paths, parameters, payload shapes)."""
         return self.scan_config.deep
+
+    @property
+    def full(self) -> bool:
+        """True only under `full`: exhaustive extras (long wordlists, backup-file probing, boolean SQLi, higher limits)."""
+        return self.scan_config.full
 
     @abstractmethod
     async def scan(self, url: str) -> list[Finding]:

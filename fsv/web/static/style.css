@@ -591,8 +591,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 /* overview: grade lands with a spring, share bars fill under each severity count */
 .grade.pop{animation:gradePop .7s var(--spring) both}
 @keyframes gradePop{0%{opacity:0;transform:scale(.4) rotate(-12deg)}100%{opacity:1;transform:none}}
-.gauge::after{content:"";position:absolute;inset:-6px;border-radius:50%;pointer-events:none;
-  background:radial-gradient(circle,transparent 62%,var(--gc,transparent) 100%);opacity:.14;filter:blur(8px)}
+/* (a blurred halo behind the ring rendered as a visible square box; the ring already glows via drop-shadow) */
 .stat .n{font-variant-numeric:tabular-nums}
 .share{display:block;height:3px;border-radius:99px;background:rgba(255,255,255,.08);margin-top:12px;overflow:hidden}
 :root[data-theme="light"] .share{background:rgba(10,10,20,.08)}
@@ -734,3 +733,4 @@ button.triage{border:0;background:transparent;font-family:inherit}
   background:var(--glass);border:1px solid var(--stroke-soft)}
 .profile-hint.show{display:block;animation:rise .3s var(--ease) both}
 .profile-hint[data-profile=deep]{color:var(--text);border-color:rgba(255,154,66,.4);background:rgba(255,154,66,.08)}
+.profile-hint[data-profile=full]{color:var(--text);border-color:rgba(255,84,104,.45);background:rgba(255,84,104,.08)}

@@ -127,10 +127,13 @@ const PROFILE_HINT = {
   balanced: "",
   aggressive: "Same checks as Balanced at a higher request rate and concurrency.",
   deep: "Thorough: crawls at least 300 URLs / depth 4, hunts for hidden parameters, probes ~90 more files, tries more payload shapes. Expect several times more requests — only for targets you own.",
+  full: "Exhaustive — everything in Deep, then: 1000+ URLs at depth 6 (reads more link kinds), ~600 guessed directories/pages nothing links to, backup copies (.bak, ~, .old) of every crawled script, boolean-based SQL injection, 160 parameter names. Can send tens of thousands of requests and run for a long time — a 1-hour limit is pre-selected. Only for systems you own.",
 };
 function updateProfileHint() {
   const h = $("profileHint"), t = PROFILE_HINT[$("profile").value] || "";
   h.textContent = t; h.classList.toggle("show", !!t); h.dataset.profile = $("profile").value;
+  const md = $("maxDuration");                                    // a full scan should not run unbounded by accident
+  if ($("profile").value === "full" && md.value === "0") { md.value = "3600"; md.dispatchEvent(new Event("change", { bubbles: true })); }
 }
 $("profile").addEventListener("change", updateProfileHint);
 updateProfileHint();

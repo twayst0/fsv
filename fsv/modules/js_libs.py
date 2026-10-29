@@ -241,7 +241,7 @@ class JSLibsScanner(BaseScanner):
             return []
         urls, _ = script_refs(r.body, url)
         out: list[Finding] = []
-        for sc_url in urls[:MAX_SCRIPTS_PER_PAGE]:
+        for sc_url in urls[:(100 if self.full else MAX_SCRIPTS_PER_PAGE)]:
             if sc_url in self._seen_scripts:
                 continue
             self._seen_scripts.add(sc_url)

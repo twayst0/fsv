@@ -73,7 +73,18 @@ async def _auth_for_api(conn: HTTPConnection) -> None:
 
 app = FastAPI(title="FSV", version=__version__, lifespan=_lifespan,
               dependencies=[Depends(_auth_for_api)])
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+class _NoCacheStatic(StaticFiles):
+    """
+    The dashboard's JS/CSS must never be served stale: after `pip install -U fsv` a browser that kept the old
+    files showed the *old* UI (and old bugs) against the new server. `no-cache` still allows a cheap 304 via ETag.
+    """
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
+app.mount("/static", _NoCacheStatic(directory=str(STATIC_DIR)), name="static")
 app.add_middleware(RequestGuard, hosts=_HOSTS)
 
 
@@ -164,8 +175,8 @@ _pending: dict[str, dict] = {}      # scan_id → {"task", "target"} until it fi
 # ── pages ─────────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
-async def index() -> str:
-    return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+async def index() -> HTMLResponse:
+    return HTMLResponse((STATIC_DIR / "index.html").read_text(encoding="utf-8"), headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/healthz")
@@ -181,7 +192,7 @@ async def api_info(request: Request) -> dict:
         "name": "FSV",
         "version": __version__,
         "modules": registry.describe(),
-        "profiles": ["passive", "balanced", "aggressive", "deep"],
+        "profiles": ["passive", "balanced", "aggressive", "deep", "full"],
         "report_formats": list(report_mod.FORMATS),
         "auth_required": bool(API_TOKEN),
         "verification_required": REQUIRE_VERIFICATION,

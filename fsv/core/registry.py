@@ -99,6 +99,8 @@ _EXTRA: list[tuple[str, str]] = [
     ("api_docs", "APIDocsScanner"),
     ("https_redirect", "HTTPSRedirectScanner"),
     ("robots_review", "RobotsReviewScanner"),
+    ("content_discovery", "ContentDiscoveryScanner"),
+    ("backup_files", "BackupFilesScanner"),
 ]
 
 

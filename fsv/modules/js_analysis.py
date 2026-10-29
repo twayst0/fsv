@@ -20,7 +20,7 @@ import json
 import re
 from urllib.parse import urljoin, urlparse
 
-from fsv.core.content import is_html, load_scripts, same_site
+from fsv.core.content import MAX_SCRIPTS_PER_PAGE, is_html, load_scripts, same_site
 from fsv.core.models import Confidence, Finding, Severity
 from fsv.core.netsafety import registrable_domain
 from fsv.core.scanner import BaseScanner
@@ -66,7 +66,7 @@ class JSAnalysisScanner(BaseScanner):
         r = await self.http.request(url)
         if not r.ok or r.status != 200 or not is_html(r.headers, r.body):
             return []
-        scripts, inline = await load_scripts(self.http, url, r.body, first_party_only=True,
+        scripts, inline = await load_scripts(self.http, url, r.body, first_party_only=True, limit=100 if self.full else MAX_SCRIPTS_PER_PAGE,
                                              skip=self._seen_scripts)
         page_domain = registrable_domain(urlparse(url).hostname or "")
         findings: list[Finding] = []
@@ -150,7 +150,7 @@ class JSAnalysisScanner(BaseScanner):
         info = self._read_map(r.body)
         out = [self._map_finding(script_url, map_url, info)]
         # original sources often contain what the bundler stripped: comments, fixtures, config
-        for name, content in info["contents"][:MAX_MAP_SOURCES_SCANNED]:
+        for name, content in info["contents"][:(600 if self.full else MAX_MAP_SOURCES_SCANNED)]:
             out += self._secrets(map_url, content, f"original source {name}")
         return out
 
