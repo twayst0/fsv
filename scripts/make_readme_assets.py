@@ -17,8 +17,10 @@ import math
 import os
 from html import escape as esc
 
+from fsv import __version__
 from fsv.core import registry
 
+SHORT_VERSION = ".".join(__version__.split(".")[:2])   # "2.4.0" → "2.4": the hero must never advertise an old release
 NMOD = len(registry.load_registry())      # the README says how many modules there are; never type the number by hand
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -214,7 +216,7 @@ def hero() -> str:
 {logo_group("hl_", 98, 92, 25, edge="#3a3a42")}
 <text x="150" y="84" font-size="15" class="b" letter-spacing="4" style="fill:url(#chrome)">FSV</text>
 <text x="206" y="84" font-size="13" class="mut" letter-spacing="3">WEB SECURITY SCANNER  ·  MCP TOOLKIT</text>
-<text x="150" y="108" font-size="13" class="m mut">v2.2 · detection-only · local-first</text>
+<text x="150" y="108" font-size="13" class="m mut">v{SHORT_VERSION} · detection-only · local-first</text>
 
 <text x="62" y="212" font-size="58" class="b" letter-spacing="-1.5" style="fill:url(#chrome)">Finds what</text>
 <text x="62" y="276" font-size="58" class="b" letter-spacing="-1.5" style="fill:url(#hl)">checklists miss.</text>
